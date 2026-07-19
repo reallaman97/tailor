@@ -1,0 +1,199 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Auth ──────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique // login credential — separate from Profile.contactEmail
+  passwordHash  String
+  emailVerified DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Envelope encryption: this per-user DEK is itself encrypted with the
+  // app-wide master key (env var). Never stored or logged in plaintext.
+  encryptedDek String
+
+  profile        Profile?
+  resumes        Resume[]
+  passwordResets PasswordResetToken[]
+  usageEvents    UsageEvent[]
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique // store hash of token, not the token itself
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+// ── Profile (one per user, source of truth) ──────────
+
+model Profile {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // --- Encrypted scalar PII (AES-256-GCM, via the user's DEK) ---
+  // Each field is one opaque ciphertext blob; decrypted only in the app
+  // layer, never in SQL.
+  fullNameEnc     String // resume field
+  contactEmailEnc String // resume field (may differ from login email)
+  phoneEnc        String // resume field
+  linkedinUrlEnc  String? // resume field
+  dateOfBirthEnc  String? // REFERENCE-ONLY — must never reach tailoring/export
+  addressEnc      String? // REFERENCE-ONLY full address, JSON {line1, line2, postalCode, country}
+  cityEnc         String? // resume field (usable on resumes)
+  stateEnc        String? // resume field (usable on resumes)
+
+  professionalSummaryEnc String? // resume field, free text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workHistory WorkHistoryEntry[]
+  education   EducationEntry[]
+  skillGroups SkillGroup[]
+}
+
+model WorkHistoryEntry {
+  id        String  @id @default(cuid())
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  company   String // plaintext — low sensitivity, needed for sorting/search
+  jobTitle  String
+  location  String?
+  startDate DateTime
+  endDate   DateTime? // null = current role
+  sortOrder Int       @default(0)
+
+  achievementsEnc String // encrypted JSON string[] — bullet text can contain sensitive specifics
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([profileId])
+}
+
+model EducationEntry {
+  id        String  @id @default(cuid())
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  institution String
+  degree      String
+  field       String?
+  startDate   DateTime?
+  endDate     DateTime?
+  sortOrder   Int       @default(0)
+
+  @@index([profileId])
+}
+
+enum SkillCategory {
+  LANGUAGES
+  FRAMEWORKS
+  TOOLS
+  SOFT_SKILLS
+}
+
+model SkillGroup {
+  id        String  @id @default(cuid())
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  category  SkillCategory
+  skills    String[] // plaintext — e.g. ["Python", "TypeScript"], no privacy concern
+  sortOrder Int           @default(0)
+
+  @@unique([profileId, category])
+}
+
+// ── Resume (many per user, one per job application) ──
+
+enum ResumeStatus {
+  DRAFT // job info saved, not yet generated
+  GENERATED // tailored content produced
+  APPLIED
+  INTERVIEWING
+  OFFER
+  REJECTED
+  ARCHIVED
+}
+
+model Resume {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  jobLink        String? // plaintext, just a URL reference
+  companyName    String
+  jobTitle       String
+  jobDescription String @db.Text // plaintext — third-party posting text, not user PII
+
+  status ResumeStatus @default(DRAFT)
+
+  // Generated, tailored output — encrypted because it contains real
+  // achievements/summary text tied to the user's identity.
+  tailoredContentEnc String? // encrypted JSON: { summary, workHistory: [{entryId, bullets[]}], orderedSkills[] }
+  modelUsed          String? // e.g. "gpt-4.1-mini" — for auditing/versioning
+  promptVersion      String? // tags which prompt template produced this
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  generatedAt DateTime? // when AI tailoring last ran
+  appliedAt   DateTime? // when user marked as applied
+
+  usageEvents UsageEvent[]
+
+  @@index([userId, status])
+}
+
+// ── LLM usage tracking (cost visibility + rate limiting) ──
+
+model UsageEvent {
+  id     String  @id @default(cuid())
+  userId String
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resumeId String?
+  resume   Resume? @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+
+  kind               String // "resume_import" | "tailoring"
+  model              String
+  inputTokens        Int
+  outputTokens       Int
+  estimatedCostMicros Int // millionths of a dollar — a single call often costs a fraction of a cent
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, kind, createdAt])
+}
+
+// ── Rate limiting ──────────────────────────────────────
+
+// Not tied to User: signup limiting is keyed by IP before any account
+// exists, and login limiting is keyed by the attempted email even when it
+// doesn't correspond to a real account.
+model RateLimitHit {
+  id        String   @id @default(cuid())
+  key       String // e.g. "login:user@example.com" or "signup:1.2.3.4"
+  createdAt DateTime @default(now())
+
+  @@index([key, createdAt])
+}
