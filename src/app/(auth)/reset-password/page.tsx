@@ -1,4 +1,6 @@
 import { ResetPasswordForm } from "./reset-password-form";
+import { AuthCard } from "../auth-card";
+import { Alert } from "@/components/ui/alert";
 
 export default async function ResetPasswordPage({
   searchParams,
@@ -8,14 +10,12 @@ export default async function ResetPasswordPage({
   const { token } = await searchParams;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 px-4">
-      <h1 className="text-2xl font-semibold">Set a new password</h1>
-
+    <AuthCard title="Set a new password">
       {token ? (
         <ResetPasswordForm token={token} />
       ) : (
-        <p className="text-sm text-red-600">Missing reset token. Use the link from your email.</p>
+        <Alert variant="destructive">Missing reset token. Use the link from your email.</Alert>
       )}
-    </main>
+    </AuthCard>
   );
 }

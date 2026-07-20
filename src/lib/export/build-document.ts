@@ -42,7 +42,7 @@ function byOptionalStartDateDesc(
 }
 
 function defaultSkillOrder(skills: ResumeFields["skills"]): string[] {
-  return [...skills.languages, ...skills.frameworks, ...skills.tools, ...skills.softSkills];
+  return skills.flatMap((g) => g.skills);
 }
 
 /**

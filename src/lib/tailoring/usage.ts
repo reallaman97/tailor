@@ -31,7 +31,7 @@ function estimateCostMicros(model: string, inputTokens: number, outputTokens: nu
 export async function recordUsageEvent(params: {
   userId: string;
   resumeId?: string;
-  kind: "resume_import" | "tailoring";
+  kind: "tailoring";
   model: string;
   inputTokens: number;
   outputTokens: number;
@@ -55,7 +55,7 @@ export async function recordUsageEvent(params: {
 
 export async function assertUnderDailyLimit(
   userId: string,
-  kind: "resume_import" | "tailoring",
+  kind: "tailoring",
   limit: number
 ): Promise<void> {
   const count = await db.usageEvent.count({

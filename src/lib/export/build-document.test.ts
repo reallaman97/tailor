@@ -17,8 +17,8 @@ const BASE_FIELDS: ResumeFields = {
       company: "OldCo",
       jobTitle: "Junior Engineer",
       location: "Austin",
-      startDate: "2018-01-01",
-      endDate: "2020-01-01",
+      startDate: "2018-01",
+      endDate: "2020-01",
       achievements: ["Original old bullet"],
     },
     {
@@ -26,22 +26,22 @@ const BASE_FIELDS: ResumeFields = {
       company: "NewCo",
       jobTitle: "Senior Engineer",
       location: "Remote",
-      startDate: "2020-02-01",
+      startDate: "2020-02",
       endDate: null,
       achievements: ["Original new bullet"],
     },
   ],
   education: [
-    { institution: "State University", degree: "M.S.", field: "CS", startDate: "2016-01-01", endDate: "2018-01-01" },
+    { institution: "State University", degree: "M.S.", field: "CS", startDate: "2016-01", endDate: "2018-01" },
     { institution: "Community College", degree: "A.S.", field: null, startDate: null, endDate: null },
-    { institution: "First College", degree: "Cert", field: null, startDate: "2014-01-01", endDate: "2015-01-01" },
+    { institution: "First College", degree: "Cert", field: null, startDate: "2014-01", endDate: "2015-01" },
   ],
-  skills: {
-    languages: ["TypeScript", "Python"],
-    frameworks: ["React"],
-    tools: ["Docker"],
-    softSkills: ["Communication"],
-  },
+  skills: [
+    { category: "Languages", skills: ["TypeScript", "Python"] },
+    { category: "Frameworks", skills: ["React"] },
+    { category: "Tools", skills: ["Docker"] },
+    { category: "Soft skills", skills: ["Communication"] },
+  ],
 };
 
 describe("buildResumeDocument", () => {

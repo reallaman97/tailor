@@ -14,12 +14,6 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  experimental: {
-    serverActions: {
-      // Default 1MB is too small for resume PDF/DOCX uploads.
-      bodySizeLimit: "5mb",
-    },
-  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth/require-user";
+import { db } from "@/lib/db";
 import { getResume } from "@/lib/resumes/resumes";
+import { getApplicationDetail } from "@/lib/admin/applications";
 import { getResumeFields } from "@/lib/profile/resume-fields";
 import { getTailoredContent } from "@/lib/tailoring/tailor-resume";
 import { buildResumeDocument } from "@/lib/export/build-document";
 import { renderResumePdf } from "@/lib/export/render-pdf";
+import { getSettings } from "@/lib/settings";
 
 function sanitizeFilenamePart(value: string): string {
   return value.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "resume";
@@ -14,12 +17,26 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   const user = await requireUser();
 
-  const resume = await getResume(user.id, id);
+  let resume = await getResume(user.id, id);
+  let ownerUserId = user.id;
+
+  if (!resume) {
+    // Not the owner (or no profile access) — allow a superadmin to download
+    // any user's resume. Re-check the role fresh rather than trusting the JWT claim.
+    const fresh = await db.user.findUniqueOrThrow({ where: { id: user.id }, select: { role: true } });
+    if (fresh.role === "SUPERADMIN") {
+      const adminResume = await getApplicationDetail(id);
+      if (adminResume) {
+        resume = adminResume;
+        ownerUserId = adminResume.userId;
+      }
+    }
+  }
   if (!resume) {
     return NextResponse.json({ error: "Resume not found" }, { status: 404 });
   }
 
-  const resumeFields = await getResumeFields(user.id);
+  const resumeFields = await getResumeFields(ownerUserId);
   if (!resumeFields) {
     return NextResponse.json(
       { error: "Save your personal info before exporting a resume" },
@@ -27,9 +44,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     );
   }
 
-  const tailoredContent = await getTailoredContent(user.id, id);
+  const tailoredContent = await getTailoredContent(ownerUserId, id);
   const document = buildResumeDocument(resumeFields, tailoredContent);
-  const pdfBuffer = await renderResumePdf(document);
+  const settings = await getSettings();
+  const pdfBuffer = await renderResumePdf(document, settings.resumeTemplate);
 
   const filename = `${sanitizeFilenamePart(resumeFields.fullName)}-${sanitizeFilenamePart(resume.companyName)}.pdf`;
 

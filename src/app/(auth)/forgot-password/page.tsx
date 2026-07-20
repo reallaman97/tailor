@@ -3,41 +3,37 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { forgotPasswordAction } from "./actions";
+import { AuthCard } from "../auth-card";
+import { FormField } from "@/components/ui/form-field";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
 
 export default function ForgotPasswordPage() {
   const [state, formAction, pending] = useActionState(forgotPasswordAction, undefined);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 px-4">
-      <h1 className="text-2xl font-semibold">Reset your password</h1>
-      <p className="text-sm text-gray-600">
-        Enter your email and we&apos;ll send you a link to reset your password.
-      </p>
+    <AuthCard
+      title="Reset your password"
+      description="Enter your email and we'll send you a link to reset your password."
+      footer={
+        <Link href="/login" className="text-primary hover:underline">
+          Back to log in
+        </Link>
+      }
+    >
+      <form action={formAction} className="flex flex-col gap-4">
+        <FormField label="Email" htmlFor="email">
+          <Input id="email" name="email" type="email" placeholder="you@example.com" required autoFocus />
+        </FormField>
 
-      <form action={formAction} className="flex flex-col gap-3">
-        <input
-          name="email"
-          type="email"
-          placeholder="Email"
-          required
-          className="rounded border px-3 py-2"
-        />
+        {state?.error && <Alert variant="destructive">{state.error}</Alert>}
+        {state?.message && <Alert variant="success">{state.message}</Alert>}
 
-        {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
-        {state?.message && <p className="text-sm text-green-700">{state.message}</p>}
-
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded bg-black px-3 py-2 text-white disabled:opacity-50"
-        >
+        <Button type="submit" loading={pending} className="w-full">
           {pending ? "Sending…" : "Send reset link"}
-        </button>
+        </Button>
       </form>
-
-      <Link href="/login" className="text-sm underline">
-        Back to log in
-      </Link>
-    </main>
+    </AuthCard>
   );
 }

@@ -53,7 +53,7 @@ describe("usage tracking and rate limiting (integration)", () => {
     expect(event.estimatedCostMicros).toBe(0);
   });
 
-  it("throws once the daily limit is reached, scoped per kind", async () => {
+  it("throws once the daily limit is reached", async () => {
     const freshUser = await createTestUser();
     try {
       for (let i = 0; i < 3; i++) {
@@ -69,11 +69,6 @@ describe("usage tracking and rate limiting (integration)", () => {
       await expect(assertUnderDailyLimit(freshUser.id, "tailoring", 3)).rejects.toThrow(
         RateLimitExceededError
       );
-
-      // A different kind has its own independent count.
-      await expect(
-        assertUnderDailyLimit(freshUser.id, "resume_import", 3)
-      ).resolves.toBeUndefined();
     } finally {
       await deleteTestUser(freshUser.id);
     }

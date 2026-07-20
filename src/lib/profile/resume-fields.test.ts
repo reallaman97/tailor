@@ -1,26 +1,30 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { db } from "@/lib/db";
 import { createTestUser, deleteTestUser } from "@/lib/profile/test-helpers";
-import { savePersonalInfo } from "@/lib/profile/personal-info";
+import { createProfile } from "@/lib/profile/personal-info";
 import { createWorkHistoryEntry } from "@/lib/profile/work-history";
+import { assignProfileToUser } from "@/lib/admin/profiles";
 import { getResumeFields } from "@/lib/profile/resume-fields";
 
 describe("getResumeFields — the reference-only-data boundary (integration)", () => {
   let userId: string;
+  let profileId: string | undefined;
 
   beforeAll(async () => {
     ({ id: userId } = await createTestUser());
   });
 
   afterAll(async () => {
+    if (profileId) await db.profile.delete({ where: { id: profileId } });
     await deleteTestUser(userId);
   });
 
-  it("returns null before a profile exists", async () => {
+  it("returns null when no profile is assigned", async () => {
     expect(await getResumeFields(userId)).toBeNull();
   });
 
   it("NEVER includes date of birth or street address, even though they are set on the profile", async () => {
-    await savePersonalInfo(userId, {
+    profileId = await createProfile({
       fullName: "Jane Doe",
       contactEmail: "jane@example.com",
       phone: "555-0100",
@@ -36,11 +40,12 @@ describe("getResumeFields — the reference-only-data boundary (integration)", (
       postalCode: "78701-SECRET",
       country: "Wakanda",
     });
-    await createWorkHistoryEntry(userId, {
+    await assignProfileToUser(profileId, userId);
+    await createWorkHistoryEntry(profileId, {
       company: "Acme",
       jobTitle: "Engineer",
       location: undefined,
-      startDate: "2020-01-01",
+      startDate: "2020-01",
       endDate: undefined,
       achievements: ["Shipped feature X"],
     });

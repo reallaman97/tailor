@@ -1,10 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { db } from "@/lib/db";
 import { createTestUser, deleteTestUser, MINIMAL_PERSONAL_INFO } from "@/lib/profile/test-helpers";
-import { savePersonalInfo } from "@/lib/profile/personal-info";
+import { createProfile } from "@/lib/profile/personal-info";
+import { assignProfileToUser } from "@/lib/admin/profiles";
+import { getProfileDek } from "@/lib/profile/dek";
+import { encryptJson } from "@/lib/profile/crypto";
 import { createResume } from "@/lib/resumes/resumes";
 import { ResumeNotFoundError } from "@/lib/resumes/resumes";
 import { RateLimitExceededError, recordUsageEvent } from "@/lib/tailoring/usage";
-import { tailorResume, sanitizeTailoredContent, ProfileIncompleteError } from "./tailor-resume";
+import { tailorResume, getTailoredContent, sanitizeTailoredContent, ProfileIncompleteError } from "./tailor-resume";
 
 describe("sanitizeTailoredContent (pure)", () => {
   it("drops work history entries with an entryId the candidate doesn't have", () => {
@@ -45,12 +49,14 @@ describe("sanitizeTailoredContent (pure)", () => {
 
 describe("tailorResume error paths (integration, no live LLM call)", () => {
   let userId: string;
+  let profileId: string | undefined;
 
   beforeAll(async () => {
     ({ id: userId } = await createTestUser());
   });
 
   afterAll(async () => {
+    if (profileId) await db.profile.delete({ where: { id: profileId } });
     await deleteTestUser(userId);
   });
 
@@ -70,11 +76,12 @@ describe("tailorResume error paths (integration, no live LLM call)", () => {
   });
 
   it("throws RateLimitExceededError before ever calling the LLM once the daily cap is hit", async () => {
-    await savePersonalInfo(userId, MINIMAL_PERSONAL_INFO);
+    profileId = await createProfile(MINIMAL_PERSONAL_INFO);
+    await assignProfileToUser(profileId, userId);
     const resumeId = await createResume(userId, {
       jobLink: undefined,
-      companyName: "Acme",
-      jobTitle: "Engineer",
+      companyName: "Globex",
+      jobTitle: "Manager",
       jobDescription: "A description that is definitely long enough to pass validation.",
     });
 
@@ -99,6 +106,43 @@ describe("tailorResume error paths (integration, no live LLM call)", () => {
     } finally {
       if (originalLimit) process.env.TAILORING_DAILY_LIMIT = originalLimit;
       else delete process.env.TAILORING_DAILY_LIMIT;
+    }
+  });
+});
+
+describe("getTailoredContent (profile-DEK sharing)", () => {
+  it("lets any teammate sharing the profile decrypt tailored content generated under it", async () => {
+    const sharedProfileId = await createProfile(MINIMAL_PERSONAL_INFO);
+    const { id: creatorId } = await createTestUser();
+    const { id: teammateId } = await createTestUser();
+
+    try {
+      await assignProfileToUser(sharedProfileId, creatorId);
+      await assignProfileToUser(sharedProfileId, teammateId);
+
+      const resumeId = await createResume(creatorId, {
+        jobLink: undefined,
+        companyName: "Shared DEK Co",
+        jobTitle: "Engineer",
+        jobDescription: "A description that is definitely long enough to pass validation.",
+      });
+
+      // Simulate what tailorResume() would have written, without a live LLM call.
+      const dek = await getProfileDek(sharedProfileId);
+      const content = { summary: "Tailored summary", workHistory: [], orderedSkills: ["Go"] };
+      await db.resume.update({
+        where: { id: resumeId },
+        data: { profileId: sharedProfileId, tailoredContentEnc: encryptJson(dek, content) },
+      });
+
+      const asCreator = await getTailoredContent(creatorId, resumeId);
+      const asTeammate = await getTailoredContent(teammateId, resumeId);
+      expect(asCreator).toEqual(content);
+      expect(asTeammate).toEqual(content);
+    } finally {
+      await deleteTestUser(creatorId);
+      await deleteTestUser(teammateId);
+      await db.profile.delete({ where: { id: sharedProfileId } });
     }
   });
 });

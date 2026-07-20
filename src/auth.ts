@@ -1,4 +1,4 @@
-import NextAuth from "next-auth";
+import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth/password";
@@ -6,6 +6,11 @@ import { assertUnderRateLimit, recordRateLimitHit, RateLimitExceededError } from
 
 const LOGIN_RATE_LIMIT = 10;
 const LOGIN_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+/** Thrown from authorize() when credentials are correct but the account is still pending superadmin approval. */
+export class AccountPendingApprovalError extends CredentialsSignin {
+  code = "account-pending-approval";
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: "jwt" },
@@ -43,17 +48,32 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
-        return { id: user.id, email: user.email };
+        if (!user.approved) {
+          throw new AccountPendingApprovalError();
+        }
+
+        return { id: user.id, email: user.email, role: user.role };
       },
     }),
   ],
   callbacks: {
     jwt: async ({ token, user }) => {
-      if (user) token.id = user.id;
+      if (user) {
+        token.id = user.id;
+        token.role = user.role;
+      }
       return token;
     },
     session: async ({ session, token }) => {
-      if (session.user) session.user.id = token.id as string;
+      if (session.user) {
+        session.user.id = token.id as string;
+        // Convenience only, for cheap UI decisions (e.g. showing the admin nav
+        // link) — never trusted for actual authorization. Every admin-gated
+        // action re-checks the role fresh from the database; a role change
+        // takes effect there immediately even though this claim is stale
+        // until the next login.
+        session.user.role = token.role as "USER" | "SUPERADMIN";
+      }
       return session;
     },
   },

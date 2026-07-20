@@ -1,5 +1,4 @@
 import { db } from "@/lib/db";
-import { requireProfileId } from "@/lib/profile/shared";
 import { toDateOnly, fromDateOnly } from "@/lib/profile/date-utils";
 import type { EducationEntryInput } from "@/lib/profile/schemas";
 
@@ -18,12 +17,9 @@ export type EducationEntry = {
   endDate: string | null;
 };
 
-export async function listEducation(userId: string): Promise<EducationEntry[]> {
-  const profile = await db.profile.findUnique({ where: { userId }, select: { id: true } });
-  if (!profile) return [];
-
+export async function listEducation(profileId: string): Promise<EducationEntry[]> {
   const entries = await db.educationEntry.findMany({
-    where: { profileId: profile.id },
+    where: { profileId },
     orderBy: { sortOrder: "asc" },
   });
 
@@ -38,10 +34,9 @@ export async function listEducation(userId: string): Promise<EducationEntry[]> {
 }
 
 export async function createEducationEntry(
-  userId: string,
+  profileId: string,
   input: EducationEntryInput
 ): Promise<string> {
-  const profileId = await requireProfileId(userId);
   const count = await db.educationEntry.count({ where: { profileId } });
 
   const entry = await db.educationEntry.create({
@@ -60,12 +55,12 @@ export async function createEducationEntry(
 }
 
 export async function updateEducationEntry(
-  userId: string,
+  profileId: string,
   entryId: string,
   input: EducationEntryInput
 ): Promise<void> {
   const result = await db.educationEntry.updateMany({
-    where: { id: entryId, profile: { userId } },
+    where: { id: entryId, profileId },
     data: {
       institution: input.institution,
       degree: input.degree,
@@ -78,9 +73,9 @@ export async function updateEducationEntry(
   if (result.count === 0) throw new EntryNotFoundError();
 }
 
-export async function deleteEducationEntry(userId: string, entryId: string): Promise<void> {
+export async function deleteEducationEntry(profileId: string, entryId: string): Promise<void> {
   const result = await db.educationEntry.deleteMany({
-    where: { id: entryId, profile: { userId } },
+    where: { id: entryId, profileId },
   });
 
   if (result.count === 0) throw new EntryNotFoundError();
