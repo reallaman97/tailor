@@ -82,3 +82,35 @@ describe("renderResumePdf", () => {
     expect(text).not.toContain("SUMMARY");
   });
 });
+
+describe("renderResumePdf (CLASSIC template)", () => {
+  it("produces a real, extractable, correctly-ordered PDF using the classic layout", async () => {
+    const buffer = await renderResumePdf(SAMPLE_DOCUMENT, "CLASSIC");
+    expect(buffer.subarray(0, 5).toString("utf8")).toBe("%PDF-");
+
+    const parser = new PDFParse({ data: buffer });
+    const { text } = await parser.getText();
+    await parser.destroy();
+
+    for (const expected of [
+      "JANE DOE", // classic template uppercases the name
+      "jane@example.com",
+      "555-0100",
+      "SUMMARY",
+      "Backend engineer focused on distributed systems.",
+      "EXPERIENCE",
+      "Senior Backend Engineer",
+      "Globex",
+      "Built a payments service handling 10k requests/day",
+      "EDUCATION",
+      "State University",
+      "SKILLS",
+    ]) {
+      expect(text).toContain(expected);
+    }
+
+    expect(text.indexOf("Senior Backend Engineer")).toBeLessThan(text.indexOf("Globex"));
+    expect(text.indexOf("EXPERIENCE")).toBeLessThan(text.indexOf("EDUCATION"));
+    expect(text.indexOf("EDUCATION")).toBeLessThan(text.indexOf("SKILLS"));
+  });
+});

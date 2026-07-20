@@ -1,3 +1,4 @@
+import { getAssignedProfileId } from "@/lib/profile/shared";
 import { getPersonalInfo } from "@/lib/profile/personal-info";
 import { listWorkHistory } from "@/lib/profile/work-history";
 import { listEducation } from "@/lib/profile/education";
@@ -27,12 +28,10 @@ export type ResumeFields = {
     startDate: string | null;
     endDate: string | null;
   }>;
-  skills: {
-    languages: string[];
-    frameworks: string[];
-    tools: string[];
-    softSkills: string[];
-  };
+  skills: Array<{
+    category: string;
+    skills: string[];
+  }>;
 };
 
 /**
@@ -42,19 +41,21 @@ export type ResumeFields = {
  * not passed through, and so cannot leak downstream no matter what callers
  * do with the return value.
  *
- * Returns null if the user hasn't saved personal info yet.
+ * Returns null if the user has no profile assigned, or it has no personal
+ * info saved yet.
  */
 export async function getResumeFields(userId: string): Promise<ResumeFields | null> {
+  const profileId = await getAssignedProfileId(userId);
+  if (!profileId) return null;
+
   const [personalInfo, workHistory, education, skillGroups] = await Promise.all([
-    getPersonalInfo(userId),
-    listWorkHistory(userId),
-    listEducation(userId),
-    listSkillGroups(userId),
+    getPersonalInfo(profileId),
+    listWorkHistory(profileId),
+    listEducation(profileId),
+    listSkillGroups(profileId),
   ]);
 
   if (!personalInfo) return null;
-
-  const skillsByCategory = Object.fromEntries(skillGroups.map((g) => [g.category, g.skills]));
 
   return {
     fullName: personalInfo.fullName,
@@ -80,11 +81,8 @@ export async function getResumeFields(userId: string): Promise<ResumeFields | nu
       startDate: e.startDate,
       endDate: e.endDate,
     })),
-    skills: {
-      languages: skillsByCategory.LANGUAGES ?? [],
-      frameworks: skillsByCategory.FRAMEWORKS ?? [],
-      tools: skillsByCategory.TOOLS ?? [],
-      softSkills: skillsByCategory.SOFT_SKILLS ?? [],
-    },
+    skills: skillGroups
+      .filter((g) => g.skills.length > 0)
+      .map((g) => ({ category: g.category, skills: g.skills })),
   };
 }

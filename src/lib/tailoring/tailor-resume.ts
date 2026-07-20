@@ -1,10 +1,12 @@
 import { db } from "@/lib/db";
-import { getResume, ResumeNotFoundError } from "@/lib/resumes/resumes";
+import { getResume, scopeFilter, ResumeNotFoundError } from "@/lib/resumes/resumes";
 import { getResumeFields } from "@/lib/profile/resume-fields";
-import { getUserDek } from "@/lib/profile/dek";
+import { getAssignedProfileId } from "@/lib/profile/shared";
+import { getProfileDek } from "@/lib/profile/dek";
 import { encryptJson, decryptJson } from "@/lib/profile/crypto";
 import { generateTailoredContent, TAILORING_PROMPT_VERSION } from "@/lib/tailoring/generate";
 import { assertUnderDailyLimit, recordUsageEvent } from "@/lib/tailoring/usage";
+import { getSettings } from "@/lib/settings";
 import type { TailoredContent } from "@/lib/tailoring/schema";
 
 export class ProfileIncompleteError extends Error {
@@ -48,28 +50,35 @@ export async function tailorResume(userId: string, resumeId: string): Promise<vo
   const resumeFields = await getResumeFields(userId);
   if (!resumeFields) throw new ProfileIncompleteError();
 
-  const result = await generateTailoredContent(resumeFields, resume.jobDescription);
+  // Tailored content is encrypted with the PROFILE's DEK (not the caller's
+  // account DEK) so any team member sharing that profile can read it back —
+  // re-synced here in case the profile assignment changed since creation.
+  const profileId = await getAssignedProfileId(userId);
+  if (!profileId) throw new ProfileIncompleteError();
+
+  const settings = await getSettings();
+  const result = await generateTailoredContent(resumeFields, resume.jobDescription, {
+    model: settings.openaiModel,
+    systemPrompt: settings.tailoringPrompt,
+  });
 
   const allowedEntryIds = new Set(resumeFields.workHistory.map((w) => w.id));
-  const allowedSkills = [
-    ...resumeFields.skills.languages,
-    ...resumeFields.skills.frameworks,
-    ...resumeFields.skills.tools,
-    ...resumeFields.skills.softSkills,
-  ];
+  const allowedSkills = resumeFields.skills.flatMap((g) => g.skills);
   const content = sanitizeTailoredContent(result.content, allowedEntryIds, allowedSkills);
 
-  const dek = await getUserDek(userId);
+  const dek = await getProfileDek(profileId);
   const tailoredContentEnc = encryptJson(dek, content);
 
-  await db.resume.updateMany({
-    where: { id: resumeId, userId },
+  await db.resume.update({
+    where: { id: resumeId },
     data: {
+      profileId,
       tailoredContentEnc,
       modelUsed: result.model,
       promptVersion: TAILORING_PROMPT_VERSION,
       generatedAt: new Date(),
-      status: resume.status === "DRAFT" ? "GENERATED" : resume.status,
+      // Generating content is a drafting step, not a pipeline transition —
+      // the applicant's actual submission status only moves via the status control.
     },
   });
 
@@ -87,12 +96,13 @@ export async function getTailoredContent(
   userId: string,
   resumeId: string
 ): Promise<TailoredContent | null> {
+  const scope = await scopeFilter(userId);
   const resume = await db.resume.findFirst({
-    where: { id: resumeId, userId },
-    select: { tailoredContentEnc: true },
+    where: { id: resumeId, ...scope },
+    select: { profileId: true, tailoredContentEnc: true },
   });
-  if (!resume?.tailoredContentEnc) return null;
+  if (!resume?.tailoredContentEnc || !resume.profileId) return null;
 
-  const dek = await getUserDek(userId);
+  const dek = await getProfileDek(resume.profileId);
   return decryptJson<TailoredContent>(dek, resume.tailoredContentEnc);
 }

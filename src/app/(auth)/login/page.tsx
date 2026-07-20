@@ -3,49 +3,44 @@
 import { useActionState } from "react";
 import Link from "next/link";
 import { loginAction } from "./actions";
+import { AuthCard } from "../auth-card";
+import { FormField } from "@/components/ui/form-field";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
 
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(loginAction, undefined);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-4 px-4">
-      <h1 className="text-2xl font-semibold">Log in</h1>
+    <AuthCard
+      title="Log in"
+      description="Welcome back — sign in to your account."
+      footer={
+        <div className="flex justify-between">
+          <Link href="/signup" className="text-primary hover:underline">
+            Create an account
+          </Link>
+          <Link href="/forgot-password" className="text-primary hover:underline">
+            Forgot password?
+          </Link>
+        </div>
+      }
+    >
+      <form action={formAction} className="flex flex-col gap-4">
+        <FormField label="Email" htmlFor="email">
+          <Input id="email" name="email" type="email" placeholder="you@example.com" required autoFocus />
+        </FormField>
+        <FormField label="Password" htmlFor="password">
+          <Input id="password" name="password" type="password" required />
+        </FormField>
 
-      <form action={formAction} className="flex flex-col gap-3">
-        <input
-          name="email"
-          type="email"
-          placeholder="Email"
-          required
-          className="rounded border px-3 py-2"
-        />
-        <input
-          name="password"
-          type="password"
-          placeholder="Password"
-          required
-          className="rounded border px-3 py-2"
-        />
+        {state?.error && <Alert variant="destructive">{state.error}</Alert>}
 
-        {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
-
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded bg-black px-3 py-2 text-white disabled:opacity-50"
-        >
+        <Button type="submit" loading={pending} className="w-full">
           {pending ? "Logging in…" : "Log in"}
-        </button>
+        </Button>
       </form>
-
-      <div className="flex justify-between text-sm text-gray-600">
-        <Link href="/signup" className="underline">
-          Create an account
-        </Link>
-        <Link href="/forgot-password" className="underline">
-          Forgot password?
-        </Link>
-      </div>
-    </main>
+    </AuthCard>
   );
 }

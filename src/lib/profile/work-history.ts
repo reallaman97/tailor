@@ -1,6 +1,5 @@
 import { db } from "@/lib/db";
-import { getUserDek } from "@/lib/profile/dek";
-import { requireProfileId } from "@/lib/profile/shared";
+import { getProfileDek } from "@/lib/profile/dek";
 import { encryptJson, decryptJson } from "@/lib/profile/crypto";
 import { toDateOnly, fromDateOnly } from "@/lib/profile/date-utils";
 import type { WorkHistoryEntryInput } from "@/lib/profile/schemas";
@@ -21,17 +20,14 @@ export type DecryptedWorkHistoryEntry = {
   achievements: string[];
 };
 
-export async function listWorkHistory(userId: string): Promise<DecryptedWorkHistoryEntry[]> {
-  const profileId = await requireProfileId(userId).catch(() => null);
-  if (!profileId) return [];
-
+export async function listWorkHistory(profileId: string): Promise<DecryptedWorkHistoryEntry[]> {
   const entries = await db.workHistoryEntry.findMany({
     where: { profileId },
     orderBy: { sortOrder: "asc" },
   });
   if (entries.length === 0) return [];
 
-  const dek = await getUserDek(userId);
+  const dek = await getProfileDek(profileId);
   return entries.map((entry) => ({
     id: entry.id,
     company: entry.company,
@@ -44,12 +40,10 @@ export async function listWorkHistory(userId: string): Promise<DecryptedWorkHist
 }
 
 export async function createWorkHistoryEntry(
-  userId: string,
+  profileId: string,
   input: WorkHistoryEntryInput
 ): Promise<string> {
-  const profileId = await requireProfileId(userId);
-  const dek = await getUserDek(userId);
-
+  const dek = await getProfileDek(profileId);
   const count = await db.workHistoryEntry.count({ where: { profileId } });
 
   const entry = await db.workHistoryEntry.create({
@@ -69,14 +63,14 @@ export async function createWorkHistoryEntry(
 }
 
 export async function updateWorkHistoryEntry(
-  userId: string,
+  profileId: string,
   entryId: string,
   input: WorkHistoryEntryInput
 ): Promise<void> {
-  const dek = await getUserDek(userId);
+  const dek = await getProfileDek(profileId);
 
   const result = await db.workHistoryEntry.updateMany({
-    where: { id: entryId, profile: { userId } },
+    where: { id: entryId, profileId },
     data: {
       company: input.company,
       jobTitle: input.jobTitle,
@@ -90,9 +84,9 @@ export async function updateWorkHistoryEntry(
   if (result.count === 0) throw new EntryNotFoundError();
 }
 
-export async function deleteWorkHistoryEntry(userId: string, entryId: string): Promise<void> {
+export async function deleteWorkHistoryEntry(profileId: string, entryId: string): Promise<void> {
   const result = await db.workHistoryEntry.deleteMany({
-    where: { id: entryId, profile: { userId } },
+    where: { id: entryId, profileId },
   });
 
   if (result.count === 0) throw new EntryNotFoundError();

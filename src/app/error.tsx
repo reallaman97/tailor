@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { AlertCircleIcon } from "@/components/icons";
 
 export default function Error({
   error,
@@ -15,16 +17,14 @@ export default function Error({
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-4 px-4 text-center">
-      <h1 className="text-xl font-semibold">Something went wrong</h1>
-      <p className="text-sm text-gray-600">
+      <div className="flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+        <AlertCircleIcon className="size-6" />
+      </div>
+      <h1 className="text-xl font-semibold text-foreground">Something went wrong</h1>
+      <p className="text-sm text-muted-foreground">
         An unexpected error occurred. Your data is safe — try again, or come back in a moment.
       </p>
-      <button
-        onClick={() => unstable_retry()}
-        className="rounded bg-black px-4 py-2 text-sm text-white"
-      >
-        Try again
-      </button>
+      <Button onClick={() => unstable_retry()}>Try again</Button>
     </main>
   );
 }

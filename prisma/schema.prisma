@@ -12,22 +12,40 @@ datasource db {
 
 // ── Auth ──────────────────────────────────────────────
 
+enum UserRole {
+  USER
+  SUPERADMIN
+}
+
 model User {
   id            String    @id @default(cuid())
   email         String    @unique // login credential — separate from Profile.contactEmail
   passwordHash  String
   emailVerified DateTime?
+  role          UserRole  @default(USER)
+  // New sign-ups start unapproved and cannot log in until a superadmin
+  // flips this — see AccountPendingApprovalError in src/auth.ts.
+  approved      Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   // Envelope encryption: this per-user DEK is itself encrypted with the
-  // app-wide master key (env var). Never stored or logged in plaintext.
+  // app-wide master key (env var). Used only for Resume.tailoredContentEnc —
+  // deliberately independent of whichever Profile (if any) is assigned to
+  // this account, so reassigning a profile never breaks past tailored resumes.
   encryptedDek String
 
-  profile        Profile?
+  // Many-to-one: many user accounts may be assigned the same pool profile.
+  // Deleting a profile unassigns every account pointing to it rather than
+  // failing or cascading.
+  profileId String?
+  profile   Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+
   resumes        Resume[]
   passwordResets PasswordResetToken[]
   usageEvents    UsageEvent[]
+
+  @@index([profileId])
 }
 
 model PasswordResetToken {
@@ -42,14 +60,23 @@ model PasswordResetToken {
   @@index([userId])
 }
 
-// ── Profile (one per user, source of truth) ──────────
+// ── Profile (an independently-managed candidate record; a superadmin
+// assigns it to any number of user accounts, and can add or remove
+// accounts later without losing the profile's data) ──────────
 
 model Profile {
-  id     String @id @default(cuid())
-  userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id String @id @default(cuid())
 
-  // --- Encrypted scalar PII (AES-256-GCM, via the user's DEK) ---
+  // One profile, many accounts — e.g. several logins sharing one curated
+  // candidate record. Managed from the profile's own admin page.
+  users User[]
+
+  // Envelope encryption: this DEK belongs to the profile itself (not
+  // whichever user it's currently assigned to), so it survives assignment,
+  // reassignment, and unassignment unchanged.
+  encryptedDek String
+
+  // --- Encrypted scalar PII (AES-256-GCM, via the profile's own DEK) ---
   // Each field is one opaque ciphertext blob; decrypted only in the app
   // layer, never in SQL.
   fullNameEnc     String // resume field
@@ -69,6 +96,7 @@ model Profile {
   workHistory WorkHistoryEntry[]
   education   EducationEntry[]
   skillGroups SkillGroup[]
+  resumes     Resume[]
 }
 
 model WorkHistoryEntry {
@@ -106,48 +134,108 @@ model EducationEntry {
   @@index([profileId])
 }
 
-enum SkillCategory {
-  LANGUAGES
-  FRAMEWORKS
-  TOOLS
-  SOFT_SKILLS
-}
-
 model SkillGroup {
   id        String  @id @default(cuid())
   profileId String
   profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
-  category  SkillCategory
+  // Free text — a superadmin can add, rename, or remove categories per profile.
+  category  String
   skills    String[] // plaintext — e.g. ["Python", "TypeScript"], no privacy concern
-  sortOrder Int           @default(0)
+  sortOrder Int      @default(0)
 
   @@unique([profileId, category])
 }
 
-// ── Resume (many per user, one per job application) ──
+// ── Resume / Application tracking (many per user, one per job application) ──
 
+// A job-application pipeline, not just a resume-generation state: DRAFT is
+// the only pre-submission stage (job info saved, maybe tailored, not yet
+// applied); everything after APPLIED mirrors how the employer's process
+// actually progresses. FAIL/CANCELED/GHOSTED are the three distinct "didn't
+// work out" outcomes — kept separate because they mean different things for
+// follow-up (FAIL = something on our side broke, worth retrying; CANCELED =
+// the employer explicitly passed; GHOSTED = no response after a long wait).
 enum ResumeStatus {
-  DRAFT // job info saved, not yet generated
-  GENERATED // tailored content produced
+  DRAFT
   APPLIED
-  INTERVIEWING
+  REPLY
+  INTRO
+  TECH1
+  TECH2
+  FINAL
   OFFER
+  FAIL
+  CANCELED
+  GHOSTED
+}
+
+enum RoleTrack {
+  BACKEND
+  FRONTEND
+  FULL_STACK
+  DEVOPS_CLOUD
+  DATA
+  AI_ML
+  SUPPORT_OPS
+  MOBILE
+  OTHER
+}
+
+enum ApplicationSource {
+  JOB_BOARD
+  LINKEDIN_OUTREACH
+  RECRUITER
+  OTHER
+}
+
+// A normal user uploads proof (a screenshot) that they actually submitted an
+// application; only a superadmin can move it out of PENDING. APPROVED counts
+// are that user's verified/trusted count of applications actually submitted.
+enum ApprovalStatus {
+  PENDING
+  APPROVED
   REJECTED
-  ARCHIVED
 }
 
 model Resume {
   id     String @id @default(cuid())
+  // Who actually created/submitted this entry ("Applied By") — distinct from
+  // profileId below, since several user accounts can share one profile and
+  // each independently log applications for it.
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  jobLink        String? // plaintext, just a URL reference
+  // Which candidate profile this application belongs to — the tracker is
+  // shared by every user account assigned to the same profile (set from the
+  // creator's assigned profile at creation time; kept in sync if it's
+  // reassigned before tailoring). Null only if no profile was assigned yet
+  // when this was logged.
+  profileId String?
+  profile   Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+
+  jobLink        String? // plaintext, just a URL reference — also the primary duplicate-detection key
   companyName    String
   jobTitle       String
   jobDescription String @db.Text // plaintext — third-party posting text, not user PII
 
-  status ResumeStatus @default(DRAFT)
+  // An application can hold several simultaneous pipeline stages at once
+  // (e.g. Applied+Reply+Tech1) — each status change adds to this history
+  // rather than replacing it, so the array reflects every stage reached so
+  // far. Reporting collapses this into one "primary" status via a
+  // most-final-wins precedence (see getPrimaryStatus in resume-status.ts).
+  statuses   ResumeStatus[]    @default([DRAFT])
+  roleTrack  RoleTrack         @default(OTHER)
+  source     ApplicationSource @default(OTHER)
+
+  followUpDate DateTime? // reference date only, e.g. "check back on this one"
+  notes        String?   @db.Text
+
+  approvalStatus ApprovalStatus @default(PENDING)
+  approvedAt     DateTime?
+  // Proof-of-submission screenshot a normal user uploads for superadmin review.
+  screenshotData     Bytes?
+  screenshotMimeType String?
 
   // Generated, tailored output — encrypted because it contains real
   // achievements/summary text tied to the user's identity.
@@ -162,7 +250,11 @@ model Resume {
 
   usageEvents UsageEvent[]
 
-  @@index([userId, status])
+  @@index([userId])
+  @@index([profileId])
+  @@index([userId, roleTrack])
+  @@index([userId, source])
+  @@index([approvalStatus])
 }
 
 // ── LLM usage tracking (cost visibility + rate limiting) ──
@@ -174,7 +266,7 @@ model UsageEvent {
   resumeId String?
   resume   Resume? @relation(fields: [resumeId], references: [id], onDelete: SetNull)
 
-  kind               String // "resume_import" | "tailoring"
+  kind               String // "tailoring"
   model              String
   inputTokens        Int
   outputTokens       Int
@@ -183,6 +275,35 @@ model UsageEvent {
   createdAt DateTime @default(now())
 
   @@index([userId, kind, createdAt])
+}
+
+// ── App-wide settings (superadmin-managed, single row) ──
+
+enum ResumeTemplate {
+  MODERN
+  CLASSIC
+}
+
+model AppSettings {
+  // Fixed, well-known id — this table only ever has one row, enforced by
+  // convention (getSettings/updateSettings in src/lib/settings.ts always
+  // read/write this exact id) rather than a DB constraint.
+  id String @id @default("singleton")
+
+  openaiModel String @default("gpt-4.1-mini")
+  // Encrypted directly with the app master key (same key that wraps every
+  // Profile/User DEK) — null means "no override, fall back to the
+  // OPENAI_API_KEY environment variable". Never returned to a client in
+  // decrypted form; only src/lib/settings.ts's getOpenAiApiKey() reads it,
+  // for the server-side OpenAI call itself.
+  openaiApiKeyEnc String?
+  // Null = use the built-in default prompt (DEFAULT_TAILORING_PROMPT in
+  // src/lib/settings.ts) — avoids duplicating that long text into a migration.
+  tailoringPrompt String? @db.Text
+  resumeTemplate  ResumeTemplate @default(MODERN)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ── Rate limiting ──────────────────────────────────────

@@ -1,25 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "@/lib/db";
-import { createTestUser, deleteTestUser } from "@/lib/profile/test-helpers";
-import { getPersonalInfo, savePersonalInfo } from "@/lib/profile/personal-info";
+import { createTestProfile, deleteTestProfile } from "@/lib/profile/test-helpers";
+import { getPersonalInfo, savePersonalInfo, createProfile } from "@/lib/profile/personal-info";
 
 describe("personal info (integration)", () => {
-  let userId: string;
+  let profileId: string;
 
   beforeAll(async () => {
-    ({ id: userId } = await createTestUser());
-  });
-
-  afterAll(async () => {
-    await deleteTestUser(userId);
-  });
-
-  it("returns null before any personal info has been saved", async () => {
-    expect(await getPersonalInfo(userId)).toBeNull();
-  });
-
-  it("saves and round-trips full personal info, including reference-only fields", async () => {
-    await savePersonalInfo(userId, {
+    profileId = await createTestProfile({
       fullName: "Jane Doe",
       contactEmail: "jane@example.com",
       phone: "555-0100",
@@ -33,8 +21,18 @@ describe("personal info (integration)", () => {
       postalCode: "78701",
       country: "US",
     });
+  });
 
-    const info = await getPersonalInfo(userId);
+  afterAll(async () => {
+    await deleteTestProfile(profileId);
+  });
+
+  it("returns null for a nonexistent profile", async () => {
+    expect(await getPersonalInfo("nonexistent-id")).toBeNull();
+  });
+
+  it("round-trips full personal info, including reference-only fields", async () => {
+    const info = await getPersonalInfo(profileId);
     expect(info).toEqual({
       fullName: "Jane Doe",
       contactEmail: "jane@example.com",
@@ -52,14 +50,14 @@ describe("personal info (integration)", () => {
   });
 
   it("stores sensitive fields as ciphertext in the database, not plaintext", async () => {
-    const raw = await db.profile.findUniqueOrThrow({ where: { userId } });
+    const raw = await db.profile.findUniqueOrThrow({ where: { id: profileId } });
     expect(raw.fullNameEnc).not.toContain("Jane Doe");
     expect(raw.dateOfBirthEnc).not.toContain("1990-05-15");
     expect(raw.addressEnc).not.toContain("Main St");
   });
 
-  it("updates in place on a second save (upsert), overwriting prior values", async () => {
-    await savePersonalInfo(userId, {
+  it("updates in place on save, overwriting prior values", async () => {
+    await savePersonalInfo(profileId, {
       fullName: "Jane A. Doe",
       contactEmail: "jane@example.com",
       phone: "555-0100",
@@ -74,13 +72,39 @@ describe("personal info (integration)", () => {
       linkedinUrl: undefined,
     });
 
-    const info = await getPersonalInfo(userId);
+    const info = await getPersonalInfo(profileId);
     expect(info?.fullName).toBe("Jane A. Doe");
     expect(info?.linkedinUrl).toBeNull();
     expect(info?.dateOfBirth).toBeNull();
     expect(info?.addressLine1).toBeNull();
 
-    const profileCount = await db.profile.count({ where: { userId } });
+    const profileCount = await db.profile.count({ where: { id: profileId } });
     expect(profileCount).toBe(1);
+  });
+
+  it("gives each newly created profile its own distinct encryption key", async () => {
+    const otherId = await createProfile({
+      fullName: "Other Person",
+      contactEmail: "other@example.com",
+      phone: "555-0200",
+      linkedinUrl: undefined,
+      professionalSummary: undefined,
+      city: undefined,
+      state: undefined,
+      dateOfBirth: undefined,
+      addressLine1: undefined,
+      addressLine2: undefined,
+      postalCode: undefined,
+      country: undefined,
+    });
+    try {
+      const [a, b] = await Promise.all([
+        db.profile.findUniqueOrThrow({ where: { id: profileId }, select: { encryptedDek: true } }),
+        db.profile.findUniqueOrThrow({ where: { id: otherId }, select: { encryptedDek: true } }),
+      ]);
+      expect(a.encryptedDek).not.toBe(b.encryptedDek);
+    } finally {
+      await db.profile.delete({ where: { id: otherId } });
+    }
   });
 });

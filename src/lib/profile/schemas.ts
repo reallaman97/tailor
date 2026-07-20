@@ -10,6 +10,15 @@ const isoDateOptional = z
   .optional()
   .transform((value) => (value ? value : undefined));
 
+// Work history and education only track month/year precision — an HTML
+// <input type="month"> submits exactly this "YYYY-MM" shape.
+const YEAR_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+const yearMonthOptional = z
+  .union([z.string().regex(YEAR_MONTH_PATTERN), z.literal("")])
+  .optional()
+  .transform((value) => (value ? value : undefined));
+
 export const personalInfoSchema = z.object({
   fullName: z.string().trim().min(1, "Full name is required"),
   contactEmail: z.email(),
@@ -32,8 +41,8 @@ export const workHistoryEntrySchema = z.object({
   company: z.string().trim().min(1, "Company is required"),
   jobTitle: z.string().trim().min(1, "Job title is required"),
   location: optionalTrimmed,
-  startDate: z.iso.date("Start date is required"),
-  endDate: isoDateOptional, // omitted/empty = current role
+  startDate: z.string().regex(YEAR_MONTH_PATTERN, "Start date is required"),
+  endDate: yearMonthOptional, // omitted/empty = current role
   achievements: z
     .string()
     .optional()
@@ -51,16 +60,14 @@ export const educationEntrySchema = z.object({
   institution: z.string().trim().min(1, "Institution is required"),
   degree: z.string().trim().min(1, "Degree is required"),
   field: optionalTrimmed,
-  startDate: isoDateOptional,
-  endDate: isoDateOptional,
+  startDate: yearMonthOptional,
+  endDate: yearMonthOptional,
 });
 
 export type EducationEntryInput = z.infer<typeof educationEntrySchema>;
 
-export const skillCategorySchema = z.enum(["LANGUAGES", "FRAMEWORKS", "TOOLS", "SOFT_SKILLS"]);
-
 export const skillGroupSchema = z.object({
-  category: skillCategorySchema,
+  category: z.string().trim().min(1, "Category name is required"),
   skills: z
     .string()
     .transform((value) =>
