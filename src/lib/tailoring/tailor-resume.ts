@@ -106,6 +106,22 @@ export async function tailorResume(userId: string, resumeId: string): Promise<vo
   });
 }
 
+/**
+ * Decrypt already-loaded tailored content. Use this when the caller already has
+ * the resume's `profileId` and `tailoredContentEnc` in hand (e.g. a page that
+ * just fetched the resume) — it costs a single DEK lookup, skipping the scope
+ * check + resume re-fetch that {@link getTailoredContent} does.
+ */
+export async function decryptTailoredContent(
+  profileId: string | null,
+  tailoredContentEnc: string | null
+): Promise<TailoredContent | null> {
+  if (!tailoredContentEnc || !profileId) return null;
+  const dek = await getProfileDek(profileId);
+  return decryptJson<TailoredContent>(dek, tailoredContentEnc);
+}
+
+/** Fetches and decrypts tailored content by resume id, scoped to `userId`. */
 export async function getTailoredContent(
   userId: string,
   resumeId: string
@@ -115,8 +131,6 @@ export async function getTailoredContent(
     where: { id: resumeId, ...scope },
     select: { profileId: true, tailoredContentEnc: true },
   });
-  if (!resume?.tailoredContentEnc || !resume.profileId) return null;
-
-  const dek = await getProfileDek(resume.profileId);
-  return decryptJson<TailoredContent>(dek, resume.tailoredContentEnc);
+  if (!resume) return null;
+  return decryptTailoredContent(resume.profileId, resume.tailoredContentEnc);
 }

@@ -88,6 +88,7 @@ describe("admin users (integration)", () => {
     const user = await db.user.create({
       data: {
         email: `test-default-${Date.now()}@example.com`,
+        username: `test_default_${Date.now()}`,
         passwordHash: "irrelevant",
         encryptedDek: "irrelevant",
       },

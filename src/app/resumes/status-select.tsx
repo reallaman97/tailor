@@ -3,8 +3,8 @@
 import { useLayoutEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { updateResumeStatusAction } from "./actions";
-import { Badge } from "@/components/ui/badge";
-import { STATUS_OPTIONS, STATUS_LABEL, STATUS_BADGE_VARIANT } from "@/lib/resume-status";
+import { StatusBadges } from "@/components/status-badges";
+import { STATUS_OPTIONS } from "@/lib/resume-status";
 import { ChevronDownIcon } from "@/components/icons";
 import type { ResumeStatus } from "@/generated/prisma/client";
 
@@ -100,12 +100,8 @@ export function StatusMultiSelect({
         className="flex min-w-[10rem] cursor-pointer items-center gap-1.5 rounded-md border border-input bg-transparent px-2 py-1 text-sm hover:bg-muted"
         aria-label="Application statuses"
       >
-        <span className="flex flex-1 flex-wrap gap-1">
-          {statuses.map((s) => (
-            <Badge key={s} variant={STATUS_BADGE_VARIANT[s]}>
-              {STATUS_LABEL[s]}
-            </Badge>
-          ))}
+        <span className="min-w-0 flex-1">
+          <StatusBadges statuses={statuses} nowrap />
         </span>
         <ChevronDownIcon className={`size-3.5 shrink-0 text-muted-foreground transition-transform ${open ? "rotate-180" : ""}`} />
       </button>

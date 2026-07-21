@@ -23,12 +23,6 @@ export default async function ResumesPage() {
           <PageHeader
             title="Applications"
             description={`Every user's tracked applications — showing ${applications.length} application${applications.length === 1 ? "" : "s"}, newest applied first. Sort or filter any column from its header.`}
-            action={
-              <Link href="/resumes/new" className={buttonVariants("primary", "md")}>
-                <PlusIcon className="size-4" />
-                Build a resume
-              </Link>
-            }
           />
 
           {applications.length === 0 ? (
@@ -56,12 +50,6 @@ export default async function ResumesPage() {
         <PageHeader
           title="Applications"
           description={`Automatically tracked from the Resume Builder — showing ${resumes.length} application${resumes.length === 1 ? "" : "s"}. Sort or filter any column from its header.`}
-          action={
-            <Link href="/resumes/new" className={buttonVariants("primary", "md")}>
-              <PlusIcon className="size-4" />
-              Build a resume
-            </Link>
-          }
         />
 
         {resumes.length === 0 ? (

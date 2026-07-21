@@ -6,6 +6,7 @@ import type { UserRole } from "@/generated/prisma/client";
 export type AdminUserSummary = {
   id: string;
   email: string;
+  username: string;
   role: UserRole;
   approved: boolean;
   createdAt: Date;
@@ -21,6 +22,7 @@ export async function listAllUsers(): Promise<AdminUserSummary[]> {
     select: {
       id: true,
       email: true,
+      username: true,
       role: true,
       approved: true,
       createdAt: true,
@@ -43,6 +45,7 @@ export async function listAllUsers(): Promise<AdminUserSummary[]> {
   return users.map((u) => ({
     id: u.id,
     email: u.email,
+    username: u.username,
     role: u.role,
     approved: u.approved,
     createdAt: u.createdAt,

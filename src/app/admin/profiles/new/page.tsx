@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { requireSuperAdmin } from "@/lib/auth/require-user";
 import { NewProfileForm } from "./new-profile-form";
-import { AdminShell } from "@/components/admin-shell";
+import { AccountShell } from "@/components/account-shell";
 import { PageHeader } from "@/components/page-header";
 
 export default async function NewProfilePage() {
-  const admin = await requireSuperAdmin();
+  await requireSuperAdmin();
 
   return (
-    <AdminShell userEmail={admin.email}>
+    <AccountShell isSuperAdmin>
       <div className="mx-auto flex max-w-2xl flex-col gap-6">
         <PageHeader
           title="New profile"
@@ -21,6 +21,6 @@ export default async function NewProfilePage() {
         />
         <NewProfileForm />
       </div>
-    </AdminShell>
+    </AccountShell>
   );
 }

@@ -78,7 +78,6 @@ export default async function DashboardPage({
               <StatRow label="Positive responses (Reply + Interview + Offer)" value={String(overview.positiveResponses)} />
               <StatRow label="Rejected" value={String(overview.rejected)} />
               <StatRow label="Failed (retry these!)" value={String(overview.failed)} />
-              <StatRow label="Ghosted" value={String(overview.ghosted)} />
               <StatRow label="Positive response rate" value={pct(overview.positiveResponseRate)} />
               <StatRow label="Need follow-up today" value={String(overview.needsFollowUpToday)} highlight />
             </CardContent>

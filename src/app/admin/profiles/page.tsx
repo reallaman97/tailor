@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireSuperAdmin } from "@/lib/auth/require-user";
 import { listAllProfiles } from "@/lib/admin/profiles";
 import { deleteProfileAction } from "./actions";
-import { AdminShell } from "@/components/admin-shell";
+import { AccountShell } from "@/components/account-shell";
 import { PageHeader } from "@/components/page-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { buttonVariants } from "@/components/ui/button";
@@ -10,11 +10,11 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TrashIcon, PlusIcon } from "@/components/icons";
 
 export default async function AdminProfilesPage() {
-  const admin = await requireSuperAdmin();
+  await requireSuperAdmin();
   const profiles = await listAllProfiles();
 
   return (
-    <AdminShell userEmail={admin.email}>
+    <AccountShell isSuperAdmin wide>
       <div className="flex flex-col gap-6">
         <PageHeader
           title="Profiles"
@@ -77,6 +77,6 @@ export default async function AdminProfilesPage() {
           </TableBody>
         </Table>
       </div>
-    </AdminShell>
+    </AccountShell>
   );
 }

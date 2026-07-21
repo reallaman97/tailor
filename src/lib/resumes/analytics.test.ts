@@ -20,7 +20,6 @@ async function seedResume(
     roleTrack: RoleTrack;
     source: ApplicationSource;
     updatedAt: Date;
-    followUpDate: Date | null;
     profileId: string;
   }> = {}
 ) {
@@ -34,7 +33,6 @@ async function seedResume(
       statuses: [overrides.status ?? "APPLIED"],
       roleTrack: overrides.roleTrack ?? "OTHER",
       source: overrides.source ?? "OTHER",
-      followUpDate: overrides.followUpDate ?? null,
     },
   });
 
@@ -46,7 +44,7 @@ async function seedResume(
 }
 
 describe("resume analytics (integration, aggregate across all users)", () => {
-  it("computes overview totals across the positive/rejected/failed/ghosted categories", async () => {
+  it("computes overview totals across the positive/rejected/failed categories", async () => {
     const { id: userId } = await createTestUser();
     try {
       const before = (await getDashboardAnalytics()).overview;
@@ -57,27 +55,25 @@ describe("resume analytics (integration, aggregate across all users)", () => {
       await seedResume(userId, { status: "OFFER" });
       await seedResume(userId, { status: "CANCELED" });
       await seedResume(userId, { status: "FAIL" });
-      await seedResume(userId, { status: "GHOSTED" });
 
       const after = (await getDashboardAnalytics()).overview;
-      expect(after.total - before.total).toBe(7);
+      expect(after.total - before.total).toBe(6);
       expect(after.awaitingResponse - before.awaitingResponse).toBe(2); // DRAFT + APPLIED
       expect(after.positiveResponses - before.positiveResponses).toBe(2); // REPLY + OFFER
       expect(after.rejected - before.rejected).toBe(1); // CANCELED
       expect(after.failed - before.failed).toBe(1); // FAIL
-      expect(after.ghosted - before.ghosted).toBe(1); // GHOSTED
     } finally {
       await deleteTestUser(userId);
     }
   });
 
-  it("flags an open application as needing follow-up once it has gone quiet for 7+ days", async () => {
+  it("flags a responded application as needing follow-up once it's gone quiet for more than 7 days", async () => {
     const { id: userId } = await createTestUser();
     try {
       const before = (await getDashboardAnalytics()).overview.needsFollowUpToday;
 
-      await seedResume(userId, { status: "APPLIED", updatedAt: daysAgo(10) });
-      await seedResume(userId, { status: "APPLIED", updatedAt: daysAgo(1) });
+      await seedResume(userId, { status: "REPLY", updatedAt: daysAgo(10) }); // responded + stale -> flagged
+      await seedResume(userId, { status: "REPLY", updatedAt: daysAgo(1) }); // responded but fresh -> not flagged
 
       const after = (await getDashboardAnalytics()).overview.needsFollowUpToday;
       expect(after - before).toBe(1);
@@ -86,26 +82,16 @@ describe("resume analytics (integration, aggregate across all users)", () => {
     }
   });
 
-  it("flags an open application as needing follow-up when its explicit follow-up date has arrived", async () => {
+  it("does not flag applications that are only awaiting a response, or closed out, even if stale", async () => {
     const { id: userId } = await createTestUser();
     try {
       const before = (await getDashboardAnalytics()).overview.needsFollowUpToday;
 
-      await seedResume(userId, { status: "APPLIED", updatedAt: daysAgo(1), followUpDate: daysAgo(1) });
-
-      const after = (await getDashboardAnalytics()).overview.needsFollowUpToday;
-      expect(after - before).toBe(1);
-    } finally {
-      await deleteTestUser(userId);
-    }
-  });
-
-  it("does not flag a closed-out application (e.g. GHOSTED) for follow-up even if stale", async () => {
-    const { id: userId } = await createTestUser();
-    try {
-      const before = (await getDashboardAnalytics()).overview.needsFollowUpToday;
-
-      await seedResume(userId, { status: "GHOSTED", updatedAt: daysAgo(30) });
+      // Not yet responded (Applied), or closed out (Fail/Canceled) — none are
+      // eligible for a follow-up nudge no matter how stale.
+      await seedResume(userId, { status: "APPLIED", updatedAt: daysAgo(30) });
+      await seedResume(userId, { status: "FAIL", updatedAt: daysAgo(30) });
+      await seedResume(userId, { status: "CANCELED", updatedAt: daysAgo(30) });
 
       const after = (await getDashboardAnalytics()).overview.needsFollowUpToday;
       expect(after - before).toBe(0);
@@ -121,8 +107,8 @@ describe("resume analytics (integration, aggregate across all users)", () => {
       const beforeNoProfileTotal =
         (await getDashboardAnalytics()).byProfile.find((p) => p.profileId === null)?.total ?? 0;
 
-      await seedResume(userId, { profileId, status: "APPLIED", updatedAt: daysAgo(10) }); // open + stale -> needs follow-up
-      await seedResume(userId, { profileId, status: "OFFER" });
+      await seedResume(userId, { profileId, status: "APPLIED" }); // awaiting response
+      await seedResume(userId, { profileId, status: "OFFER", updatedAt: daysAgo(10) }); // responded + stale -> needs follow-up
       await seedResume(userId, { profileId, status: "CANCELED" });
       await seedResume(userId, { status: "APPLIED" }); // no profile -> falls into the null bucket
 

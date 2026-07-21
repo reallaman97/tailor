@@ -9,7 +9,7 @@ async function main() {
     const passwordHash = await hashPassword("correct-horse-battery-staple");
     const encryptedDek = wrapDek(generateDek());
     const user = await db.user.create({
-      data: { email, passwordHash, encryptedDek },
+      data: { email, username: email.split("@")[0], passwordHash, encryptedDek },
     });
     console.log(`created user ${user.id} ${user.email}`);
   } else if (mode === "delete") {

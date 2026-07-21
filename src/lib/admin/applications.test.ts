@@ -176,7 +176,7 @@ describe("admin applications (integration)", () => {
     expect(resumeB.statuses).toEqual(["APPLIED"]);
   });
 
-  it("changes only the source, leaving follow-up date and notes untouched", async () => {
+  it("changes only the source, leaving notes untouched", async () => {
     const id = await createResume(userId, {
       jobLink: undefined,
       companyName: "Source Only Co",
@@ -185,7 +185,6 @@ describe("admin applications (integration)", () => {
     });
     await updateApplicationDetails(id, {
       source: "JOB_BOARD",
-      followUpDate: "2026-08-01",
       notes: "Keep this note.",
     });
 
@@ -193,11 +192,10 @@ describe("admin applications (integration)", () => {
 
     const detail = await getResume(userId, id);
     expect(detail?.source).toBe("RECRUITER");
-    expect(detail?.followUpDate?.toISOString().slice(0, 10)).toBe("2026-08-01");
     expect(detail?.notes).toBe("Keep this note.");
   });
 
-  it("updates source, follow-up date, and notes for any user's application", async () => {
+  it("updates source and notes for any user's application", async () => {
     const id = await createResume(userId, {
       jobLink: undefined,
       companyName: "Admin Details Co",
@@ -207,13 +205,11 @@ describe("admin applications (integration)", () => {
 
     await updateApplicationDetails(id, {
       source: "LINKEDIN_OUTREACH",
-      followUpDate: "2026-08-01",
       notes: "Recruiter mentioned a fast process.",
     });
 
     const detail = await getResume(userId, id);
     expect(detail?.source).toBe("LINKEDIN_OUTREACH");
-    expect(detail?.followUpDate?.toISOString().slice(0, 10)).toBe("2026-08-01");
     expect(detail?.notes).toBe("Recruiter mentioned a fast process.");
   });
 

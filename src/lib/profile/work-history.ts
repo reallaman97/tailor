@@ -24,13 +24,14 @@ export type DecryptedWorkHistoryEntry = {
 };
 
 export async function listWorkHistory(profileId: string): Promise<DecryptedWorkHistoryEntry[]> {
-  const entries = await db.workHistoryEntry.findMany({
-    where: { profileId },
-    orderBy: { sortOrder: "asc" },
-  });
+  // Fetch the entries and the profile DEK concurrently — neither depends on the
+  // other, and serialising them doubled this call's round-trip latency.
+  const [entries, dek] = await Promise.all([
+    db.workHistoryEntry.findMany({ where: { profileId }, orderBy: { sortOrder: "asc" } }),
+    getProfileDek(profileId),
+  ]);
   if (entries.length === 0) return [];
 
-  const dek = await getProfileDek(profileId);
   return entries.map((entry) => ({
     id: entry.id,
     company: entry.company,

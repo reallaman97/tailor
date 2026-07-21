@@ -30,13 +30,14 @@ export type ResumeSummary = {
   roleTrack: RoleTrack;
   source: ApplicationSource;
   approvalStatus: ApprovalStatus;
-  followUpDate: Date | null;
   hasScreenshot: boolean;
   appliedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   /** Who actually created/submitted this entry — several accounts can share one profile's tracker. */
   appliedByEmail: string;
+  /** The creator's public handle — how they're shown in the tracker. */
+  appliedByName: string;
 };
 
 export type ResumeDetail = ResumeSummary & {
@@ -45,6 +46,9 @@ export type ResumeDetail = ResumeSummary & {
   generatedAt: Date | null;
   approvedAt: Date | null;
   modelUsed: string | null;
+  /** Encrypted tailored output, carried on the detail so callers can decrypt it
+   * without a second round trip to re-read the same row. */
+  tailoredContentEnc: string | null;
 };
 
 const SUMMARY_SELECT = {
@@ -57,12 +61,11 @@ const SUMMARY_SELECT = {
   roleTrack: true,
   source: true,
   approvalStatus: true,
-  followUpDate: true,
   appliedAt: true,
   createdAt: true,
   updatedAt: true,
   screenshotData: true,
-  user: { select: { email: true } },
+  user: { select: { email: true, username: true } },
 } as const;
 
 function toSummary(row: {
@@ -75,12 +78,11 @@ function toSummary(row: {
   roleTrack: RoleTrack;
   source: ApplicationSource;
   approvalStatus: ApprovalStatus;
-  followUpDate: Date | null;
   appliedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   screenshotData: Buffer | Uint8Array | null;
-  user: { email: string };
+  user: { email: string; username: string };
 }): ResumeSummary {
   return {
     id: row.id,
@@ -92,12 +94,12 @@ function toSummary(row: {
     roleTrack: row.roleTrack,
     source: row.source,
     approvalStatus: row.approvalStatus,
-    followUpDate: row.followUpDate,
     hasScreenshot: row.screenshotData !== null,
     appliedAt: row.appliedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     appliedByEmail: row.user.email,
+    appliedByName: row.user.username,
   };
 }
 
@@ -214,6 +216,7 @@ export async function getResume(userId: string, resumeId: string): Promise<Resum
       generatedAt: true,
       approvedAt: true,
       modelUsed: true,
+      tailoredContentEnc: true,
     },
   });
   if (!resume) return null;
@@ -225,6 +228,7 @@ export async function getResume(userId: string, resumeId: string): Promise<Resum
     generatedAt: resume.generatedAt,
     approvedAt: resume.approvedAt,
     modelUsed: resume.modelUsed,
+    tailoredContentEnc: resume.tailoredContentEnc,
   };
 }
 

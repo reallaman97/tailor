@@ -7,59 +7,54 @@ import {
   getCoreRowModel,
   getSortedRowModel,
   getFilteredRowModel,
+  getPaginationRowModel,
   flexRender,
   type ColumnDef,
   type SortingState,
   type ColumnFiltersState,
   type ColumnSizingState,
 } from "@tanstack/react-table";
-import { StatusMultiSelect } from "./status-select";
-import { SourceSelect } from "./source-select";
+import { TablePagination, DEFAULT_PAGE_SIZE } from "@/components/table-pagination";
 import { ApprovalSelect } from "./approval-select";
 import {
-  bulkUpdateResumeStatusAction,
   bulkUpdateResumeApprovalAction,
   bulkDeleteResumesAction,
   deleteResumeAction,
 } from "./actions";
 import { usePersistedState } from "@/lib/use-persisted-state";
-import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select } from "@/components/ui/select";
-import { ExternalLinkIcon, TrashIcon, DownloadIcon, FileTextIcon } from "@/components/icons";
-import {
-  ROLE_TRACK_LABEL,
-  ROLE_TRACK_OPTIONS,
-  SOURCE_OPTIONS,
-  STATUS_OPTIONS,
-  OPEN_STATUSES,
-  getPrimaryStatus,
-} from "@/lib/resume-status";
+import { ExternalLinkIcon, TrashIcon, DownloadIcon, FileTextIcon, EyeIcon } from "@/components/icons";
+import { needsFollowUp } from "@/lib/resume-status";
 import { cn } from "@/lib/utils";
 import type { AdminTrackerRow } from "@/lib/admin/applications";
-import type { ResumeStatus } from "@/generated/prisma/client";
 
-const DAY_MS = 86_400_000;
 const APPROVAL_FILTER_OPTIONS = [
   { value: "PENDING", label: "Pending" },
   { value: "APPROVED", label: "Approved" },
   { value: "REJECTED", label: "Rejected" },
 ];
 
-function daysOpen(createdAt: Date): number {
-  return Math.floor((Date.now() - createdAt.getTime()) / DAY_MS);
-}
-
-function needsFollowUp(statuses: ResumeStatus[], updatedAt: Date, followUpDate: Date | null): boolean {
-  if (!OPEN_STATUSES.has(getPrimaryStatus(statuses))) return false;
-  const daysSinceUpdate = Math.floor((Date.now() - updatedAt.getTime()) / DAY_MS);
-  const followUpDue = followUpDate ? followUpDate.getTime() <= Date.now() : false;
-  return daysSinceUpdate >= 7 || followUpDue;
-}
-
 function toDateInputValue(date: Date | null): string {
   return date ? date.toISOString().slice(0, 10) : "";
+}
+
+/**
+ * The Applied column is filtered from two places that share one filter slot:
+ * the top "Applied between" control (a {from,to} range) and the in-column
+ * single-date picker (an exact-match string). This resolves either form.
+ */
+function appliedMatchesFilter(appliedAt: Date | null, value: unknown): boolean {
+  if (value == null || value === "") return true;
+  const applied = toDateInputValue(appliedAt);
+  if (typeof value === "string") return applied === value; // single-date exact match
+  const range = value as DateRange;
+  if (!range.from && !range.to) return true;
+  if (!applied) return false;
+  if (range.from && applied < range.from) return false;
+  if (range.to && applied > range.to) return false;
+  return true;
 }
 
 function TextFilter({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -115,35 +110,43 @@ function DateFilter({ value, onChange }: { value: string; onChange: (v: string) 
 
 export type DateRange = { from: string; to: string };
 
-function DateRangeFilter({ value, onChange }: { value: DateRange; onChange: (v: DateRange) => void }) {
+/** Standalone "Applied between" range control, shown above the table rather
+ * than inside the Applied column header. */
+function AppliedRangeControl({ value, onChange }: { value: DateRange; onChange: (v: DateRange) => void }) {
+  const active = value.from || value.to;
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Applied between</span>
       <input
         type="date"
+        aria-label="Applied from"
         value={value.from}
         onChange={(e) => onChange({ ...value, from: e.target.value })}
-        onClick={(e) => e.stopPropagation()}
-        aria-label="From"
-        title="From"
-        className="h-7 w-full rounded border border-input bg-transparent px-1 text-xs text-foreground"
+        className="h-8 rounded border border-input bg-transparent px-2 text-sm text-foreground"
       />
+      <span className="text-sm text-muted-foreground">to</span>
       <input
         type="date"
+        aria-label="Applied to"
         value={value.to}
         onChange={(e) => onChange({ ...value, to: e.target.value })}
-        onClick={(e) => e.stopPropagation()}
-        aria-label="To"
-        title="To"
-        className="h-7 w-full rounded border border-input bg-transparent px-1 text-xs text-foreground"
+        className="h-8 rounded border border-input bg-transparent px-2 text-sm text-foreground"
       />
+      {active && (
+        <button
+          type="button"
+          onClick={() => onChange({ from: "", to: "" })}
+          className="cursor-pointer text-sm text-muted-foreground hover:text-foreground hover:underline"
+        >
+          Clear
+        </button>
+      )}
     </div>
   );
 }
 
 export function AdminApplicationsTable({ applications }: { applications: AdminTrackerRow[] }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulkStatus, setBulkStatus] = useState<ResumeStatus>("APPLIED");
-  const [pending, startTransition] = useTransition();
   const [approvalPending, startApprovalTransition] = useTransition();
 
   const [sorting, setSorting] = usePersistedState<SortingState>("admin-applications-table:sorting", []);
@@ -155,6 +158,14 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
     "admin-applications-table:columnSizing",
     {}
   );
+  const [pageSize, setPageSize] = usePersistedState<number>("admin-applications-table:pageSize", DEFAULT_PAGE_SIZE);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [followUpOnly, setFollowUpOnly] = useState(false);
+
+  const data = useMemo(
+    () => (followUpOnly ? applications.filter((a) => needsFollowUp(a.statuses, a.updatedAt)) : applications),
+    [applications, followUpOnly]
+  );
 
   function toggleOne(id: string) {
     setSelected((prev) => {
@@ -162,14 +173,6 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
-    });
-  }
-
-  function applyBulkStatus() {
-    const ids = [...selected];
-    startTransition(async () => {
-      await bulkUpdateResumeStatusAction(ids, bulkStatus);
-      setSelected(new Set());
     });
   }
 
@@ -206,7 +209,28 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
         id: "select",
         size: 40,
         enableResizing: false,
-        header: () => null,
+        header: ({ table }) => {
+          const rows = table.getFilteredRowModel().rows;
+          const allSelected = rows.length > 0 && rows.every((r) => selected.has(r.original.id));
+          return (
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={() =>
+                setSelected((prev) => {
+                  const next = new Set(prev);
+                  if (allSelected) rows.forEach((r) => next.delete(r.original.id));
+                  else rows.forEach((r) => next.add(r.original.id));
+                  return next;
+                })
+              }
+              onClick={(e) => e.stopPropagation()}
+              aria-label="Select all rows"
+              title="Select all"
+              className="size-4 accent-primary"
+            />
+          );
+        },
         cell: ({ row }) => (
           <input
             type="checkbox"
@@ -219,20 +243,26 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
         ),
       },
       {
-        id: "userEmail",
-        accessorKey: "userEmail",
+        id: "userName",
+        accessorKey: "userName",
         header: "Applied By",
-        size: 200,
-        cell: ({ getValue }) => <span className="text-muted-foreground">{getValue<string>()}</span>,
+        size: 180,
+        cell: ({ getValue }) => {
+          const v = getValue<string>();
+          return <span className="block truncate text-muted-foreground" title={v}>{v}</span>;
+        },
         filterFn: (row, id, value: string) =>
-          row.original.userEmail.toLowerCase().includes(value.toLowerCase()),
+          row.original.userName.toLowerCase().includes(value.toLowerCase()),
       },
       {
         id: "profileName",
         accessorFn: (row) => row.profileName ?? "",
         header: "Profile",
         size: 160,
-        cell: ({ getValue }) => <span className="text-muted-foreground">{getValue<string>() || "—"}</span>,
+        cell: ({ getValue }) => {
+          const v = getValue<string>() || "—";
+          return <span className="block truncate text-muted-foreground" title={v}>{v}</span>;
+        },
         filterFn: (row, id, value: string) =>
           (row.original.profileName ?? "").toLowerCase().includes(value.toLowerCase()),
       },
@@ -244,7 +274,8 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
         cell: ({ row }) => (
           <Link
             href={`/resumes/${row.original.id}`}
-            className="font-medium text-foreground hover:text-primary hover:underline"
+            title={row.original.companyName}
+            className="block truncate font-medium text-foreground hover:text-primary hover:underline"
             onClick={(e) => e.stopPropagation()}
           >
             {row.original.companyName}
@@ -258,78 +289,17 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
         accessorKey: "jobTitle",
         header: "Title",
         size: 160,
-        cell: ({ getValue }) => <span className="text-muted-foreground">{getValue<string>()}</span>,
+        cell: ({ row }) => (
+          <Link
+            href={`/resumes/${row.original.id}`}
+            title={row.original.jobTitle}
+            className="block truncate text-muted-foreground hover:text-primary hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {row.original.jobTitle}
+          </Link>
+        ),
         filterFn: (row, id, value: string) => row.original.jobTitle.toLowerCase().includes(value.toLowerCase()),
-      },
-      {
-        id: "status",
-        accessorFn: (row) => getPrimaryStatus(row.statuses),
-        header: "Status",
-        size: 220,
-        cell: ({ row }) => (
-          <div onClick={(e) => e.stopPropagation()}>
-            <StatusMultiSelect resumeId={row.original.id} statuses={row.original.statuses} />
-          </div>
-        ),
-        filterFn: (row, id, value: string) => row.original.statuses.includes(value as ResumeStatus),
-      },
-      {
-        id: "roleTrack",
-        accessorKey: "roleTrack",
-        header: "Role track",
-        size: 130,
-        cell: ({ getValue }) => (
-          <span className="text-muted-foreground">{ROLE_TRACK_LABEL[getValue<AdminTrackerRow["roleTrack"]>()]}</span>
-        ),
-      },
-      {
-        id: "source",
-        accessorKey: "source",
-        header: "Source",
-        size: 170,
-        cell: ({ row }) => (
-          <div onClick={(e) => e.stopPropagation()}>
-            <SourceSelect resumeId={row.original.id} source={row.original.source} />
-          </div>
-        ),
-      },
-      {
-        id: "daysOpen",
-        accessorFn: (row) => daysOpen(row.createdAt),
-        header: "Days open",
-        size: 90,
-        cell: ({ getValue }) => <span className="text-muted-foreground">{getValue<number>()}</span>,
-        filterFn: (row, id, value: string) => {
-          const min = Number(value);
-          return value === "" || Number.isNaN(min) || daysOpen(row.original.createdAt) >= min;
-        },
-      },
-      {
-        id: "followUp",
-        accessorFn: (row) => needsFollowUp(row.statuses, row.updatedAt, row.followUpDate),
-        header: "Follow-up",
-        size: 130,
-        cell: ({ getValue }) =>
-          getValue<boolean>() ? (
-            <Badge variant="warning">Needs follow-up</Badge>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          ),
-        filterFn: (row, id, value: string) => {
-          if (value === "") return true;
-          const needs = needsFollowUp(row.original.statuses, row.original.updatedAt, row.original.followUpDate);
-          return value === "yes" ? needs : !needs;
-        },
-      },
-      {
-        id: "updatedAt",
-        accessorKey: "updatedAt",
-        header: "Updated",
-        size: 120,
-        cell: ({ getValue }) => (
-          <span className="text-muted-foreground">{getValue<Date>().toLocaleDateString()}</span>
-        ),
-        filterFn: (row, id, value: string) => value === "" || toDateInputValue(row.original.updatedAt) === value,
       },
       {
         id: "appliedAt",
@@ -340,14 +310,7 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
           const v = getValue<Date | null>();
           return <span className="text-muted-foreground">{v ? v.toLocaleDateString() : "—"}</span>;
         },
-        filterFn: (row, id, value: DateRange | undefined) => {
-          if (!value?.from && !value?.to) return true;
-          const applied = toDateInputValue(row.original.appliedAt);
-          if (!applied) return false;
-          if (value.from && applied < value.from) return false;
-          if (value.to && applied > value.to) return false;
-          return true;
-        },
+        filterFn: (row, id, value) => appliedMatchesFilter(row.original.appliedAt, value),
       },
       {
         id: "approvalStatus",
@@ -391,12 +354,17 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
       {
         id: "actions",
         header: "Actions",
-        size: 190,
+        size: 160,
         enableResizing: false,
         cell: ({ row }) => (
           <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-            <Link href={`/resumes/${row.original.id}`} className={buttonVariants("ghost", "sm")}>
-              View
+            <Link
+              href={`/resumes/${row.original.id}`}
+              className={buttonVariants("ghost", "icon")}
+              aria-label="View application"
+              title="View application"
+            >
+              <EyeIcon className="size-4" />
             </Link>
             <a
               href={`/api/resumes/${row.original.id}/job-description`}
@@ -432,23 +400,45 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
   );
 
   const table = useReactTable({
-    data: applications,
+    data,
     columns,
-    state: { sorting, columnFilters, columnSizing },
+    state: { sorting, columnFilters, columnSizing, pagination: { pageIndex, pageSize } },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnSizingChange: setColumnSizing,
+    onPaginationChange: (updater) => {
+      const next = typeof updater === "function" ? updater({ pageIndex, pageSize }) : updater;
+      setPageIndex(next.pageIndex);
+      setPageSize(next.pageSize);
+    },
     columnResizeMode: "onChange",
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   });
 
+  // The Applied column's filter slot holds either a {from,to} range (set by the
+  // top "Applied between" control) or a single-date string (set by the in-column
+  // picker). Read each in the form its control expects.
+  const appliedFilter = table.getColumn("appliedAt")?.getFilterValue();
+  const appliedRange: DateRange =
+    appliedFilter && typeof appliedFilter === "object" ? (appliedFilter as DateRange) : { from: "", to: "" };
+  const setAppliedRange = (v: DateRange) =>
+    table.getColumn("appliedAt")?.setFilterValue(v.from || v.to ? v : undefined);
+
+  // Approved applications matching the current Applied-date filter (range or
+  // single date; all approved when no date filter is set). Updates live.
+  const approvedInRange = applications.filter(
+    (a) => a.approvalStatus === "APPROVED" && appliedMatchesFilter(a.appliedAt, appliedFilter)
+  ).length;
+  const appliedFilterActive = appliedFilter != null && appliedFilter !== "";
+
   const filterUi: Record<string, React.ReactNode> = {
-    userEmail: (
+    userName: (
       <TextFilter
-        value={(table.getColumn("userEmail")?.getFilterValue() as string) ?? ""}
-        onChange={(v) => table.getColumn("userEmail")?.setFilterValue(v)}
+        value={(table.getColumn("userName")?.getFilterValue() as string) ?? ""}
+        onChange={(v) => table.getColumn("userName")?.setFilterValue(v)}
       />
     ),
     profileName: (
@@ -469,58 +459,10 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
         onChange={(v) => table.getColumn("jobTitle")?.setFilterValue(v)}
       />
     ),
-    status: (
-      <SelectFilter
-        value={(table.getColumn("status")?.getFilterValue() as string) ?? ""}
-        onChange={(v) => table.getColumn("status")?.setFilterValue(v || undefined)}
-        options={STATUS_OPTIONS}
-      />
-    ),
-    roleTrack: (
-      <SelectFilter
-        value={(table.getColumn("roleTrack")?.getFilterValue() as string) ?? ""}
-        onChange={(v) => table.getColumn("roleTrack")?.setFilterValue(v || undefined)}
-        options={ROLE_TRACK_OPTIONS}
-      />
-    ),
-    source: (
-      <SelectFilter
-        value={(table.getColumn("source")?.getFilterValue() as string) ?? ""}
-        onChange={(v) => table.getColumn("source")?.setFilterValue(v || undefined)}
-        options={SOURCE_OPTIONS}
-      />
-    ),
-    daysOpen: (
-      <input
-        type="number"
-        min={0}
-        placeholder="Min"
-        value={(table.getColumn("daysOpen")?.getFilterValue() as string) ?? ""}
-        onChange={(e) => table.getColumn("daysOpen")?.setFilterValue(e.target.value)}
-        onClick={(e) => e.stopPropagation()}
-        className="h-7 w-full rounded border border-input bg-transparent px-1.5 text-xs text-foreground"
-      />
-    ),
-    followUp: (
-      <SelectFilter
-        value={(table.getColumn("followUp")?.getFilterValue() as string) ?? ""}
-        onChange={(v) => table.getColumn("followUp")?.setFilterValue(v || undefined)}
-        options={[
-          { value: "yes", label: "Needs follow-up" },
-          { value: "no", label: "OK" },
-        ]}
-      />
-    ),
-    updatedAt: (
-      <DateFilter
-        value={(table.getColumn("updatedAt")?.getFilterValue() as string) ?? ""}
-        onChange={(v) => table.getColumn("updatedAt")?.setFilterValue(v)}
-      />
-    ),
     appliedAt: (
-      <DateRangeFilter
-        value={(table.getColumn("appliedAt")?.getFilterValue() as DateRange) ?? { from: "", to: "" }}
-        onChange={(v) => table.getColumn("appliedAt")?.setFilterValue(v.from || v.to ? v : undefined)}
+      <DateFilter
+        value={typeof appliedFilter === "string" ? appliedFilter : ""}
+        onChange={(v) => table.getColumn("appliedAt")?.setFilterValue(v || undefined)}
       />
     ),
     approvalStatus: (
@@ -547,22 +489,6 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-muted/40 px-4 py-2.5">
           <span className="text-sm font-medium text-foreground">{selected.size} selected</span>
-          <Select
-            value={bulkStatus}
-            onChange={(e) => setBulkStatus(e.target.value as ResumeStatus)}
-            className="h-8 min-w-[9rem] text-sm"
-            aria-label="Bulk status"
-          >
-            {STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </Select>
-          <Button type="button" size="sm" loading={pending} onClick={applyBulkStatus}>
-            {pending ? "Adding…" : "Add status to selected"}
-          </Button>
-          <span className="h-5 w-px shrink-0 bg-border" />
           <Button
             type="button"
             size="sm"
@@ -612,8 +538,30 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
         </div>
       )}
 
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-4">
+          <AppliedRangeControl value={appliedRange} onChange={setAppliedRange} />
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={followUpOnly}
+              onChange={(e) => {
+                setFollowUpOnly(e.target.checked);
+                setPageIndex(0);
+              }}
+              className="size-4 accent-primary"
+            />
+            Needs follow-up
+          </label>
+        </div>
+        <div className="rounded-md border border-border bg-muted/40 px-3 py-1.5 text-sm">
+          <span className="text-muted-foreground">Approved{appliedFilterActive ? " in selected dates" : ""}: </span>
+          <span className="font-semibold text-foreground">{approvedInRange}</span>
+        </div>
+      </div>
+
       <div className="w-full overflow-x-auto rounded-lg border border-border">
-        <table style={{ width: table.getTotalSize(), tableLayout: "fixed" }} className="caption-bottom text-sm">
+        <table style={{ minWidth: table.getTotalSize(), tableLayout: "fixed" }} className="w-full caption-bottom text-sm">
           <thead className="bg-muted/50">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="border-b border-border">
@@ -664,7 +612,11 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
                 )}
               >
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} style={{ width: cell.column.getSize() }} className="overflow-hidden p-3 align-middle">
+                  <td
+                    key={cell.id}
+                    style={{ width: cell.column.getSize() }}
+                    className="overflow-hidden whitespace-nowrap p-3 align-middle"
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
@@ -673,9 +625,10 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
           </tbody>
         </table>
       </div>
-      {table.getRowModel().rows.length === 0 && (
+      {table.getFilteredRowModel().rows.length === 0 && (
         <p className="py-6 text-center text-sm text-muted-foreground">No rows match the current column filters.</p>
       )}
+      <TablePagination table={table} />
     </div>
   );
 }

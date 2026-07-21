@@ -11,28 +11,27 @@ export const STATUS_OPTIONS: { value: ResumeStatus; label: string }[] = [
   { value: "OFFER", label: "Offer" },
   { value: "FAIL", label: "Fail" },
   { value: "CANCELED", label: "Canceled" },
-  { value: "GHOSTED", label: "Ghosted" },
 ];
 
 export const STATUS_LABEL: Record<ResumeStatus, string> = Object.fromEntries(
   STATUS_OPTIONS.map((o) => [o.value, o.label])
 ) as Record<ResumeStatus, string>;
 
-export const STATUS_BADGE_VARIANT: Record<
-  ResumeStatus,
-  "default" | "secondary" | "success" | "warning" | "destructive" | "outline"
-> = {
-  DRAFT: "outline",
-  APPLIED: "secondary",
-  REPLY: "default",
-  INTRO: "default",
-  TECH1: "warning",
-  TECH2: "warning",
-  FINAL: "warning",
-  OFFER: "success",
-  FAIL: "destructive",
-  CANCELED: "destructive",
-  GHOSTED: "outline",
+// A unique color per status, so an abbreviated (first-letter) status pill is
+// still distinguishable when several share a first letter (e.g. Tech 1 / Tech 2,
+// Final / Fail). Semantic where it matters: Offer green, Fail red, Canceled
+// orange; the interview stages progress teal → fuchsia.
+export const STATUS_COLOR: Record<ResumeStatus, string> = {
+  DRAFT: "#64748b", // slate
+  APPLIED: "#3b82f6", // blue
+  REPLY: "#06b6d4", // cyan
+  INTRO: "#14b8a6", // teal
+  TECH1: "#8b5cf6", // violet
+  TECH2: "#a855f7", // purple
+  FINAL: "#d946ef", // fuchsia
+  OFFER: "#22c55e", // green
+  FAIL: "#ef4444", // red
+  CANCELED: "#f97316", // orange
 };
 
 // Dashboard reporting buckets — several raw statuses roll up into one
@@ -42,7 +41,6 @@ export const POSITIVE_STATUSES = new Set<ResumeStatus>(["REPLY", "INTRO", "TECH1
 export const INTERVIEW_STATUSES = new Set<ResumeStatus>(["INTRO", "TECH1", "TECH2", "FINAL"]);
 export const REJECTED_STATUSES = new Set<ResumeStatus>(["CANCELED"]);
 export const FAILED_STATUSES = new Set<ResumeStatus>(["FAIL"]);
-export const GHOSTED_STATUSES = new Set<ResumeStatus>(["GHOSTED"]);
 // Still "in flight" — used to compute follow-up-needed and days-open.
 export const OPEN_STATUSES = new Set<ResumeStatus>(["DRAFT", "APPLIED", "REPLY", "INTRO", "TECH1", "TECH2", "FINAL"]);
 
@@ -56,7 +54,6 @@ const STATUS_PRECEDENCE: ResumeStatus[] = [
   "OFFER",
   "FAIL",
   "CANCELED",
-  "GHOSTED",
   "FINAL",
   "TECH2",
   "TECH1",
@@ -71,6 +68,20 @@ export function getPrimaryStatus(statuses: ResumeStatus[]): ResumeStatus {
     if (statuses.includes(candidate)) return candidate;
   }
   return statuses[0] ?? "DRAFT";
+}
+
+export const FOLLOW_UP_AFTER_DAYS = 7;
+
+/**
+ * An application needs a follow-up when it has had a response (a stage past
+ * Applied that isn't a closed-out outcome — Reply/Intro/Tech/Final/Offer) but
+ * has then gone quiet — no status change — for MORE than FOLLOW_UP_AFTER_DAYS.
+ */
+export function needsFollowUp(statuses: ResumeStatus[], updatedAt: Date, now: Date = new Date()): boolean {
+  return (
+    POSITIVE_STATUSES.has(getPrimaryStatus(statuses)) &&
+    now.getTime() - updatedAt.getTime() > FOLLOW_UP_AFTER_DAYS * 86_400_000
+  );
 }
 
 export const ROLE_TRACK_OPTIONS: { value: RoleTrack; label: string }[] = [

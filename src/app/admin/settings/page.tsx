@@ -1,19 +1,19 @@
 import { requireSuperAdmin } from "@/lib/auth/require-user";
 import { getSettings } from "@/lib/settings";
-import { SettingsForm } from "./settings-form";
-import { AppShell } from "@/components/app-shell";
+import { AccountShell } from "@/components/account-shell";
 import { PageHeader } from "@/components/page-header";
+import { SettingsForm } from "./settings-form";
 
 export default async function AdminSettingsPage() {
-  const admin = await requireSuperAdmin();
+  await requireSuperAdmin();
   const settings = await getSettings();
 
   return (
-    <AppShell userEmail={admin.email} isSuperAdmin>
+    <AccountShell isSuperAdmin>
       <div className="flex flex-col gap-6">
-        <PageHeader title="Settings" description="App-wide configuration for superadmins." />
+        <PageHeader title="Settings" description="App-wide configuration for the Resume Platform." />
         <SettingsForm settings={settings} />
       </div>
-    </AppShell>
+    </AccountShell>
   );
 }

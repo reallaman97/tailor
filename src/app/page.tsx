@@ -6,7 +6,8 @@ import { ToolCard } from "@/components/tool-card";
 import { Logo } from "@/components/logo";
 import { Footer } from "@/components/footer";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { LogOutIcon, UsersIcon, FolderIcon } from "@/components/icons";
+import { LogOutIcon, UserIcon } from "@/components/icons";
+import Link from "next/link";
 
 export default async function Home() {
   const user = await requireUser();
@@ -20,7 +21,14 @@ export default async function Home() {
           <span className="text-sm font-semibold tracking-tight text-foreground">Cute Job Platform</span>
         </div>
         <div className="flex-1" />
-        <span className="hidden max-w-[14rem] truncate text-xs text-muted-foreground md:inline">{user.email}</span>
+        <Link
+          href="/account"
+          aria-label="My account"
+          title="My account"
+          className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <UserIcon className="size-4" />
+        </Link>
         <ThemeToggle />
         <ConfirmDialog
           title="Log out?"
@@ -64,33 +72,6 @@ export default async function Home() {
             );
           })}
         </div>
-
-        {isSuperAdmin && (
-          <div className="mt-12">
-            <div className="mb-4 flex flex-col gap-1">
-              <h2 className="text-lg font-semibold tracking-tight text-foreground">Platform administration</h2>
-              <p className="text-sm text-muted-foreground">
-                User and profile management span every tool, so they live here rather than inside any one of them.
-              </p>
-            </div>
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              <ToolCard
-                icon={UsersIcon}
-                name="Users"
-                description="Approve sign-ups, manage roles, and assign profiles."
-                status="open"
-                href="/admin/users"
-              />
-              <ToolCard
-                icon={FolderIcon}
-                name="Profiles"
-                description="Manage every candidate profile shared across accounts."
-                status="open"
-                href="/admin/profiles"
-              />
-            </div>
-          </div>
-        )}
       </main>
 
       <Footer />

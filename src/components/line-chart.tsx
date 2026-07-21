@@ -20,14 +20,57 @@ export function LineChart({ labels, series }: { labels: string[]; series: Series
   const yMax = niceCeil(maxValue);
   const xStep = labels.length > 1 ? innerWidth / (labels.length - 1) : 0;
 
-  function pointsFor(values: number[]): string {
-    return values
-      .map((v, i) => {
-        const x = padding.left + i * xStep;
-        const y = padding.top + innerHeight - (v / yMax) * innerHeight;
-        return `${x},${y}`;
-      })
-      .join(" ");
+  /**
+   * Smooth curve through the points using monotone cubic interpolation
+   * (Fritsch–Carlson). Unlike a plain Catmull-Rom spline it never overshoots
+   * the data, so a line can't bulge above or dip below its own points.
+   */
+  function pathFor(values: number[]): string {
+    const pts = values.map((v, i) => ({
+      x: padding.left + i * xStep,
+      y: padding.top + innerHeight - (v / yMax) * innerHeight,
+    }));
+    const n = pts.length;
+    if (n === 0) return "";
+    if (n === 1) return `M ${pts[0].x},${pts[0].y}`;
+
+    const dx = pts.map((p, i) => (i < n - 1 ? pts[i + 1].x - p.x : 0));
+    const slope = pts.map((p, i) => (i < n - 1 ? (pts[i + 1].y - p.y) / dx[i] : 0));
+
+    const m = new Array<number>(n).fill(0);
+    m[0] = slope[0];
+    m[n - 1] = slope[n - 2];
+    for (let i = 1; i < n - 1; i++) {
+      m[i] = slope[i - 1] * slope[i] <= 0 ? 0 : (slope[i - 1] + slope[i]) / 2;
+    }
+    // Clamp tangents to keep each segment monotone (no overshoot).
+    for (let i = 0; i < n - 1; i++) {
+      if (slope[i] === 0) {
+        m[i] = 0;
+        m[i + 1] = 0;
+      } else {
+        const a = m[i] / slope[i];
+        const b = m[i + 1] / slope[i];
+        const h = Math.hypot(a, b);
+        if (h > 3) {
+          const t = 3 / h;
+          m[i] = t * a * slope[i];
+          m[i + 1] = t * b * slope[i];
+        }
+      }
+    }
+
+    let d = `M ${pts[0].x},${pts[0].y}`;
+    for (let i = 0; i < n - 1; i++) {
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      const cp1x = p1.x + dx[i] / 3;
+      const cp1y = p1.y + (m[i] * dx[i]) / 3;
+      const cp2x = p2.x - dx[i] / 3;
+      const cp2y = p2.y - (m[i + 1] * dx[i]) / 3;
+      d += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+    }
+    return d;
   }
 
   const yTickCount = 4;
@@ -90,9 +133,9 @@ export function LineChart({ labels, series }: { labels: string[]; series: Series
         ))}
 
         {series.map((s) => (
-          <polyline
+          <path
             key={s.label}
-            points={pointsFor(s.values)}
+            d={pathFor(s.values)}
             fill="none"
             stroke={s.color}
             strokeWidth={2}

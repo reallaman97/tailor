@@ -27,7 +27,6 @@ export const resumeStatusSchema = z.enum([
   "OFFER",
   "FAIL",
   "CANCELED",
-  "GHOSTED",
 ]);
 
 export const createResumeSchema = z.object({
@@ -62,7 +61,6 @@ export const updateResumeStatusSchema = z.object({
 // never manually editable, by anyone, afterward.
 export const updateResumeDetailsSchema = z.object({
   source: applicationSourceSchema,
-  followUpDate: z.union([z.iso.date(), z.literal("")]).optional(),
   notes: z
     .string()
     .max(5_000, "Notes are too long (max 5,000 characters)")

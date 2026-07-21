@@ -96,18 +96,17 @@ export async function addStatusToApplications(resumeIds: string[], status: Resum
   );
 }
 
-/** Inline source change — leaves follow-up date/notes untouched, unlike the full updateApplicationDetails form. */
+/** Inline source change — leaves notes untouched, unlike the full updateApplicationDetails form. */
 export async function setApplicationSource(resumeId: string, source: ApplicationSource): Promise<void> {
   await db.resume.update({ where: { id: resumeId }, data: { source } });
 }
 
 export type UpdateApplicationDetailsInput = {
   source: ApplicationSource;
-  followUpDate?: string;
   notes?: string;
 };
 
-/** Superadmin-only tracking-metadata edit — source/follow-up/notes, unscoped by owner. Role track is never manually editable (AI-classified at creation). */
+/** Superadmin-only tracking-metadata edit — source/notes, unscoped by owner. Role track is never manually editable (AI-classified at creation). */
 export async function updateApplicationDetails(
   resumeId: string,
   input: UpdateApplicationDetailsInput
@@ -116,7 +115,6 @@ export async function updateApplicationDetails(
     where: { id: resumeId },
     data: {
       source: input.source,
-      followUpDate: input.followUpDate ? new Date(`${input.followUpDate}T00:00:00.000Z`) : null,
       notes: input.notes ?? null,
     },
   });
@@ -132,7 +130,7 @@ export type AdminApplicationDetail = ResumeDetail & {
 export async function getApplicationDetail(resumeId: string): Promise<AdminApplicationDetail | null> {
   const resume = await db.resume.findUnique({
     where: { id: resumeId },
-    include: { user: { select: { id: true, email: true } } },
+    include: { user: { select: { id: true, email: true, username: true } } },
   });
   if (!resume) return null;
 
@@ -149,7 +147,6 @@ export async function getApplicationDetail(resumeId: string): Promise<AdminAppli
     roleTrack: resume.roleTrack,
     source: resume.source,
     approvalStatus: resume.approvalStatus,
-    followUpDate: resume.followUpDate,
     hasScreenshot: resume.screenshotData !== null,
     createdAt: resume.createdAt,
     updatedAt: resume.updatedAt,
@@ -159,10 +156,12 @@ export async function getApplicationDetail(resumeId: string): Promise<AdminAppli
     appliedAt: resume.appliedAt,
     approvedAt: resume.approvedAt,
     modelUsed: resume.modelUsed,
+    tailoredContentEnc: resume.tailoredContentEnc,
     userId: resume.user.id,
     profileId: resume.profileId,
     profileName,
     appliedByEmail: resume.user.email,
+    appliedByName: resume.user.username,
   };
 }
 
@@ -171,6 +170,8 @@ export type AdminTrackerRow = {
   userId: string;
   /** "Applied By" — who actually created this entry (may differ from other team members sharing the same profile). */
   userEmail: string;
+  /** The creator's public handle — how "Applied By" is shown in the tracker. */
+  userName: string;
   profileId: string | null;
   profileName: string | null;
   companyName: string;
@@ -181,7 +182,6 @@ export type AdminTrackerRow = {
   source: ApplicationSource;
   approvalStatus: ApprovalStatus;
   hasScreenshot: boolean;
-  followUpDate: Date | null;
   createdAt: Date;
   updatedAt: Date;
   appliedAt: Date | null;
@@ -208,7 +208,7 @@ export async function listAllApplications(filter: AdminTrackerFilter = {}): Prom
       ...(filter.profileId ? { profileId: filter.profileId } : {}),
     },
     orderBy: [{ appliedAt: "desc" }, { createdAt: "desc" }],
-    include: { user: { select: { id: true, email: true } } },
+    include: { user: { select: { id: true, email: true, username: true } } },
   });
 
   const profileIds = [...new Set(resumes.map((r) => r.profileId).filter((id): id is string => id !== null))];
@@ -218,6 +218,7 @@ export async function listAllApplications(filter: AdminTrackerFilter = {}): Prom
     id: r.id,
     userId: r.user.id,
     userEmail: r.user.email,
+    userName: r.user.username,
     profileId: r.profileId,
     profileName: r.profileId ? (namesByProfileId.get(r.profileId) ?? null) : null,
     companyName: r.companyName,
@@ -228,7 +229,6 @@ export async function listAllApplications(filter: AdminTrackerFilter = {}): Prom
     source: r.source,
     approvalStatus: r.approvalStatus,
     hasScreenshot: r.screenshotData !== null,
-    followUpDate: r.followUpDate,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     appliedAt: r.appliedAt,

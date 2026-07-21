@@ -6,19 +6,21 @@ import { Button } from "@/components/ui/button";
 import { UploadIcon, XIcon } from "@/components/icons";
 
 /**
- * Wraps ScreenshotUpload in a dialog rather than showing it inline — opened
- * either by the trigger button, or automatically right after building the
- * resume (autoOpen), so proof of application can go straight to a superadmin
- * for review without hunting for the upload control on the page.
+ * Wraps ScreenshotUpload in a dialog rather than showing it inline. Opened
+ * automatically right after the resume is built (autoOpen) — the only moment a
+ * Bidder is offered the upload. Pass `showTrigger` to also render a manual
+ * open button (used only where a standing upload control is wanted).
  */
 export function ScreenshotUploadDialog({
   resumeId,
   hasScreenshot,
   autoOpen = false,
+  showTrigger = true,
 }: {
   resumeId: string;
   hasScreenshot: boolean;
   autoOpen?: boolean;
+  showTrigger?: boolean;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -28,13 +30,17 @@ export function ScreenshotUploadDialog({
 
   return (
     <div className="flex items-center gap-3">
-      <span className="text-sm text-muted-foreground">
-        {hasScreenshot ? "Screenshot uploaded." : "No screenshot uploaded yet."}
-      </span>
-      <Button type="button" variant="outline" size="sm" onClick={() => dialogRef.current?.showModal()}>
-        <UploadIcon className="size-4" />
-        {hasScreenshot ? "Replace screenshot" : "Upload proof of application"}
-      </Button>
+      {showTrigger && (
+        <>
+          <span className="text-sm text-muted-foreground">
+            {hasScreenshot ? "Screenshot uploaded." : "No screenshot uploaded yet."}
+          </span>
+          <Button type="button" variant="outline" size="sm" onClick={() => dialogRef.current?.showModal()}>
+            <UploadIcon className="size-4" />
+            {hasScreenshot ? "Replace screenshot" : "Upload proof of application"}
+          </Button>
+        </>
+      )}
 
       <dialog
         ref={dialogRef}

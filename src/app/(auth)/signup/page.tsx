@@ -46,8 +46,23 @@ export default function SignupPage() {
       }
     >
       <form action={formAction} className="flex flex-col gap-4">
+        <FormField label="Username" htmlFor="username">
+          <Input
+            id="username"
+            name="username"
+            type="text"
+            placeholder="your_handle"
+            autoComplete="username"
+            required
+            minLength={3}
+            maxLength={30}
+            pattern="[A-Za-z0-9_]+"
+            title="Letters, numbers, and underscores only"
+            autoFocus
+          />
+        </FormField>
         <FormField label="Email" htmlFor="email">
-          <Input id="email" name="email" type="email" placeholder="you@example.com" required autoFocus />
+          <Input id="email" name="email" type="email" placeholder="you@example.com" required />
         </FormField>
         <FormField label="Password" htmlFor="password">
           <PasswordInput id="password" name="password" required minLength={8} />

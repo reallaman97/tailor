@@ -1,6 +1,6 @@
 import { auth } from "@/auth";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/resumes", "/admin"];
+const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/resumes", "/admin", "/account"];
 const RESUME_PLATFORM_ROLES = new Set(["SUPERADMIN", "BIDDER"]);
 
 // UX convenience only — redirects logged-out visitors away from protected
@@ -39,5 +39,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/profile/:path*", "/resumes/:path*", "/admin/:path*"],
+  matcher: ["/dashboard/:path*", "/profile/:path*", "/resumes/:path*", "/admin/:path*", "/account/:path*"],
 };

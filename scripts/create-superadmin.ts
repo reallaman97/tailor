@@ -4,10 +4,11 @@ import { generateDek, wrapDek } from "@/lib/crypto/envelope";
 
 const email = process.argv[2];
 const password = process.argv[3];
+const username = process.argv[4] ?? email?.split("@")[0];
 
 async function main() {
   if (!email || !password) {
-    throw new Error("usage: tsx scripts/create-superadmin.ts <email> <password>");
+    throw new Error("usage: tsx scripts/create-superadmin.ts <email> <password> [username]");
   }
 
   const passwordHash = await hashPassword(password);
@@ -15,11 +16,11 @@ async function main() {
 
   const user = await db.user.upsert({
     where: { email },
-    create: { email, passwordHash, encryptedDek, role: "SUPERADMIN", approved: true },
+    create: { email, username, passwordHash, encryptedDek, role: "SUPERADMIN", approved: true },
     update: { passwordHash, role: "SUPERADMIN", approved: true },
   });
 
-  console.log(`superadmin ready: ${user.email} (role: ${user.role})`);
+  console.log(`superadmin ready: ${user.email} (@${user.username}, role: ${user.role})`);
 }
 
 main().finally(() => db.$disconnect());

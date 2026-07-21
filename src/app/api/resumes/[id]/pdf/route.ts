@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { getResume } from "@/lib/resumes/resumes";
 import { getApplicationDetail } from "@/lib/admin/applications";
 import { getResumeFieldsForResume } from "@/lib/profile/resume-fields";
-import { getTailoredContent } from "@/lib/tailoring/tailor-resume";
+import { decryptTailoredContent } from "@/lib/tailoring/tailor-resume";
 import { buildResumeDocument } from "@/lib/export/build-document";
 import { renderResumePdf } from "@/lib/export/render-pdf";
 import { getSettings } from "@/lib/settings";
@@ -47,7 +47,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     );
   }
 
-  const tailoredContent = await getTailoredContent(ownerUserId, id);
+  const tailoredContent = await decryptTailoredContent(resume.profileId, resume.tailoredContentEnc);
   const document = buildResumeDocument(resumeFields, tailoredContent);
   const settings = await getSettings();
   const pdfBuffer = await renderResumePdf(document, settings.resumeTemplate);

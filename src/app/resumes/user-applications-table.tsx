@@ -1,29 +1,59 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
   useReactTable,
   getCoreRowModel,
   getSortedRowModel,
   getFilteredRowModel,
+  getPaginationRowModel,
   flexRender,
   type ColumnDef,
   type SortingState,
   type ColumnFiltersState,
   type ColumnSizingState,
 } from "@tanstack/react-table";
+import { TablePagination, DEFAULT_PAGE_SIZE } from "@/components/table-pagination";
 import { ApprovalStatusCell } from "@/components/approval-status-cell";
 import { StatusBadges } from "@/components/status-badges";
 import { buttonVariants } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
-import { ExternalLinkIcon, DownloadIcon, FileTextIcon } from "@/components/icons";
-import { STATUS_OPTIONS, getPrimaryStatus } from "@/lib/resume-status";
+import { ExternalLinkIcon, DownloadIcon, FileTextIcon, EyeIcon } from "@/components/icons";
+import { STATUS_OPTIONS, getPrimaryStatus, needsFollowUp } from "@/lib/resume-status";
 import { cn } from "@/lib/utils";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import type { ResumeSummary } from "@/lib/resumes/resumes";
 
 function toDateInputValue(date: Date | null): string {
   return date ? date.toISOString().slice(0, 10) : "";
+}
+
+/**
+ * The Applied column shares one filter slot between the top "Applied between"
+ * range control ({from,to}) and the in-column single-date picker (a string).
+ */
+function appliedMatchesFilter(appliedAt: Date | null, value: unknown): boolean {
+  if (value == null || value === "") return true;
+  const applied = toDateInputValue(appliedAt);
+  if (typeof value === "string") return applied === value; // single-date exact match
+  const range = value as { from: string; to: string };
+  if (!range.from && !range.to) return true;
+  if (!applied) return false;
+  if (range.from && applied < range.from) return false;
+  if (range.to && applied > range.to) return false;
+  return true;
+}
+
+function DateFilter({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return (
+    <input
+      type="date"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="h-7 w-full rounded border border-input bg-transparent px-1 text-xs text-foreground"
+    />
+  );
 }
 
 function TextFilter({ value, onChange }: { value: string; onChange: (v: string) => void }) {
@@ -61,25 +91,37 @@ function SelectFilter({
 
 type DateRange = { from: string; to: string };
 
-function DateRangeFilter({ value, onChange }: { value: DateRange; onChange: (v: DateRange) => void }) {
+/** Standalone "Applied between" range control, shown above the table rather
+ * than inside the Applied column header. */
+function AppliedRangeControl({ value, onChange }: { value: DateRange; onChange: (v: DateRange) => void }) {
+  const active = value.from || value.to;
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Applied between</span>
       <input
         type="date"
+        aria-label="Applied from"
         value={value.from}
         onChange={(e) => onChange({ ...value, from: e.target.value })}
-        aria-label="From"
-        title="From"
-        className="h-7 w-full rounded border border-input bg-transparent px-1 text-xs text-foreground"
+        className="h-8 rounded border border-input bg-transparent px-2 text-sm text-foreground"
       />
+      <span className="text-sm text-muted-foreground">to</span>
       <input
         type="date"
+        aria-label="Applied to"
         value={value.to}
         onChange={(e) => onChange({ ...value, to: e.target.value })}
-        aria-label="To"
-        title="To"
-        className="h-7 w-full rounded border border-input bg-transparent px-1 text-xs text-foreground"
+        className="h-8 rounded border border-input bg-transparent px-2 text-sm text-foreground"
       />
+      {active && (
+        <button
+          type="button"
+          onClick={() => onChange({ from: "", to: "" })}
+          className="cursor-pointer text-sm text-muted-foreground hover:text-foreground hover:underline"
+        >
+          Clear
+        </button>
+      )}
     </div>
   );
 }
@@ -99,6 +141,14 @@ export function UserApplicationsTable({ resumes }: { resumes: ResumeSummary[] })
   const [columnSizing, setColumnSizing] = usePersistedState<ColumnSizingState>(
     "user-applications-table:columnSizing",
     {}
+  );
+  const [pageSize, setPageSize] = usePersistedState<number>("user-applications-table:pageSize", DEFAULT_PAGE_SIZE);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [followUpOnly, setFollowUpOnly] = useState(false);
+
+  const data = useMemo(
+    () => (followUpOnly ? resumes.filter((r) => needsFollowUp(r.statuses, r.updatedAt)) : resumes),
+    [resumes, followUpOnly]
   );
 
   const columns: ColumnDef<ResumeSummary>[] = [
@@ -131,7 +181,11 @@ export function UserApplicationsTable({ resumes }: { resumes: ResumeSummary[] })
       header: "Company",
       size: 170,
       cell: ({ row }) => (
-        <Link href={`/resumes/${row.original.id}`} className="font-medium text-foreground hover:text-primary hover:underline">
+        <Link
+          href={`/resumes/${row.original.id}`}
+          title={row.original.companyName}
+          className="block truncate font-medium text-foreground hover:text-primary hover:underline"
+        >
           {row.original.companyName}
         </Link>
       ),
@@ -142,7 +196,15 @@ export function UserApplicationsTable({ resumes }: { resumes: ResumeSummary[] })
       accessorKey: "jobTitle",
       header: "Title",
       size: 170,
-      cell: ({ getValue }) => <span className="text-muted-foreground">{getValue<string>()}</span>,
+      cell: ({ row }) => (
+        <Link
+          href={`/resumes/${row.original.id}`}
+          title={row.original.jobTitle}
+          className="block truncate text-muted-foreground hover:text-primary hover:underline"
+        >
+          {row.original.jobTitle}
+        </Link>
+      ),
       filterFn: (row, id, value: string) => row.original.jobTitle.toLowerCase().includes(value.toLowerCase()),
     },
     {
@@ -150,16 +212,19 @@ export function UserApplicationsTable({ resumes }: { resumes: ResumeSummary[] })
       accessorFn: (row) => getPrimaryStatus(row.statuses),
       header: "Status",
       size: 200,
-      cell: ({ row }) => <StatusBadges statuses={row.original.statuses} />,
+      cell: ({ row }) => <StatusBadges statuses={row.original.statuses} nowrap />,
       filterFn: (row, id, value: string) => row.original.statuses.includes(value as never),
     },
     {
-      id: "appliedByEmail",
-      accessorKey: "appliedByEmail",
+      id: "appliedByName",
+      accessorKey: "appliedByName",
       header: "Applied By",
-      size: 190,
-      cell: ({ getValue }) => <span className="text-muted-foreground">{getValue<string>()}</span>,
-      filterFn: (row, id, value: string) => row.original.appliedByEmail.toLowerCase().includes(value.toLowerCase()),
+      size: 170,
+      cell: ({ getValue }) => {
+        const v = getValue<string>();
+        return <span className="block truncate text-muted-foreground" title={v}>{v}</span>;
+      },
+      filterFn: (row, id, value: string) => row.original.appliedByName.toLowerCase().includes(value.toLowerCase()),
     },
     {
       id: "appliedAt",
@@ -170,14 +235,7 @@ export function UserApplicationsTable({ resumes }: { resumes: ResumeSummary[] })
         const v = getValue<Date | null>();
         return <span className="text-muted-foreground">{v ? v.toLocaleDateString() : "—"}</span>;
       },
-      filterFn: (row, id, value: DateRange | undefined) => {
-        if (!value?.from && !value?.to) return true;
-        const applied = toDateInputValue(row.original.appliedAt);
-        if (!applied) return false;
-        if (value.from && applied < value.from) return false;
-        if (value.to && applied > value.to) return false;
-        return true;
-      },
+      filterFn: (row, id, value) => appliedMatchesFilter(row.original.appliedAt, value),
     },
     {
       id: "approvalStatus",
@@ -200,8 +258,13 @@ export function UserApplicationsTable({ resumes }: { resumes: ResumeSummary[] })
       enableResizing: false,
       cell: ({ row }) => (
         <div className="flex items-center justify-end gap-1">
-          <Link href={`/resumes/${row.original.id}`} className={buttonVariants("ghost", "sm")}>
-            View
+          <Link
+            href={`/resumes/${row.original.id}`}
+            className={buttonVariants("ghost", "icon")}
+            aria-label="View application"
+            title="View application"
+          >
+            <EyeIcon className="size-4" />
           </Link>
           <a
             href={`/api/resumes/${row.original.id}/job-description`}
@@ -225,17 +288,36 @@ export function UserApplicationsTable({ resumes }: { resumes: ResumeSummary[] })
   ];
 
   const table = useReactTable({
-    data: resumes,
+    data,
     columns,
-    state: { sorting, columnFilters, columnSizing },
+    state: { sorting, columnFilters, columnSizing, pagination: { pageIndex, pageSize } },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnSizingChange: setColumnSizing,
+    onPaginationChange: (updater) => {
+      const next = typeof updater === "function" ? updater({ pageIndex, pageSize }) : updater;
+      setPageIndex(next.pageIndex);
+      setPageSize(next.pageSize);
+    },
     columnResizeMode: "onChange",
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   });
+
+  // Applied filter slot: {from,to} range from the top control, or a single-date
+  // string from the in-column picker. Read each in the form its control expects.
+  const appliedFilter = table.getColumn("appliedAt")?.getFilterValue();
+  const appliedRange: DateRange =
+    appliedFilter && typeof appliedFilter === "object" ? (appliedFilter as DateRange) : { from: "", to: "" };
+  const setAppliedRange = (v: DateRange) =>
+    table.getColumn("appliedAt")?.setFilterValue(v.from || v.to ? v : undefined);
+
+  const approvedInRange = resumes.filter(
+    (r) => r.approvalStatus === "APPROVED" && appliedMatchesFilter(r.appliedAt, appliedFilter)
+  ).length;
+  const appliedFilterActive = appliedFilter != null && appliedFilter !== "";
 
   const filterUi: Record<string, React.ReactNode> = {
     jobLink: (
@@ -267,16 +349,16 @@ export function UserApplicationsTable({ resumes }: { resumes: ResumeSummary[] })
         options={STATUS_OPTIONS}
       />
     ),
-    appliedByEmail: (
+    appliedByName: (
       <TextFilter
-        value={(table.getColumn("appliedByEmail")?.getFilterValue() as string) ?? ""}
-        onChange={(v) => table.getColumn("appliedByEmail")?.setFilterValue(v)}
+        value={(table.getColumn("appliedByName")?.getFilterValue() as string) ?? ""}
+        onChange={(v) => table.getColumn("appliedByName")?.setFilterValue(v)}
       />
     ),
     appliedAt: (
-      <DateRangeFilter
-        value={(table.getColumn("appliedAt")?.getFilterValue() as DateRange) ?? { from: "", to: "" }}
-        onChange={(v) => table.getColumn("appliedAt")?.setFilterValue(v.from || v.to ? v : undefined)}
+      <DateFilter
+        value={typeof appliedFilter === "string" ? appliedFilter : ""}
+        onChange={(v) => table.getColumn("appliedAt")?.setFilterValue(v || undefined)}
       />
     ),
     approvalStatus: (
@@ -290,8 +372,30 @@ export function UserApplicationsTable({ resumes }: { resumes: ResumeSummary[] })
 
   return (
     <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-4">
+          <AppliedRangeControl value={appliedRange} onChange={setAppliedRange} />
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={followUpOnly}
+              onChange={(e) => {
+                setFollowUpOnly(e.target.checked);
+                setPageIndex(0);
+              }}
+              className="size-4 accent-primary"
+            />
+            Needs follow-up
+          </label>
+        </div>
+        <div className="rounded-md border border-border bg-muted/40 px-3 py-1.5 text-sm">
+          <span className="text-muted-foreground">Approved{appliedFilterActive ? " in selected dates" : ""}: </span>
+          <span className="font-semibold text-foreground">{approvedInRange}</span>
+        </div>
+      </div>
+
       <div className="w-full overflow-x-auto rounded-lg border border-border">
-        <table style={{ width: table.getTotalSize(), tableLayout: "fixed" }} className="caption-bottom text-sm">
+        <table style={{ minWidth: table.getTotalSize(), tableLayout: "fixed" }} className="w-full caption-bottom text-sm">
           <thead className="bg-muted/50">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="border-b border-border">
@@ -332,7 +436,11 @@ export function UserApplicationsTable({ resumes }: { resumes: ResumeSummary[] })
             {table.getRowModel().rows.map((row) => (
               <tr key={row.id} className="border-b border-border transition-colors hover:bg-muted/40">
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} style={{ width: cell.column.getSize() }} className="overflow-hidden p-3 align-middle">
+                  <td
+                    key={cell.id}
+                    style={{ width: cell.column.getSize() }}
+                    className="overflow-hidden whitespace-nowrap p-3 align-middle"
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}
@@ -341,9 +449,10 @@ export function UserApplicationsTable({ resumes }: { resumes: ResumeSummary[] })
           </tbody>
         </table>
       </div>
-      {table.getRowModel().rows.length === 0 && (
+      {table.getFilteredRowModel().rows.length === 0 && (
         <p className="py-6 text-center text-sm text-muted-foreground">No rows match the current column filters.</p>
       )}
+      <TablePagination table={table} />
     </div>
   );
 }

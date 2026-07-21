@@ -93,18 +93,26 @@ export function UsersTable({
   const columns = useMemo<ColumnDef<AdminUserSummary>[]>(
     () => [
       {
-        id: "email",
-        accessorKey: "email",
-        header: "Email",
-        size: 260,
+        id: "username",
+        accessorKey: "username",
+        header: "Username",
+        size: 200,
         cell: ({ row }) => (
           <span className="font-medium text-foreground">
-            {row.original.email}
+            {row.original.username}
             {row.original.id === adminId && (
               <span className="ml-2 text-xs font-normal text-muted-foreground">(you)</span>
             )}
           </span>
         ),
+        filterFn: (row, id, value: string) => row.original.username.toLowerCase().includes(value.toLowerCase()),
+      },
+      {
+        id: "email",
+        accessorKey: "email",
+        header: "Email",
+        size: 240,
+        cell: ({ getValue }) => <span className="text-muted-foreground">{getValue<string>()}</span>,
         filterFn: (row, id, value: string) => row.original.email.toLowerCase().includes(value.toLowerCase()),
       },
       {
@@ -208,6 +216,12 @@ export function UsersTable({
   });
 
   const filterUi: Record<string, React.ReactNode> = {
+    username: (
+      <TextFilter
+        value={(table.getColumn("username")?.getFilterValue() as string) ?? ""}
+        onChange={(v) => table.getColumn("username")?.setFilterValue(v)}
+      />
+    ),
     email: (
       <TextFilter
         value={(table.getColumn("email")?.getFilterValue() as string) ?? ""}
@@ -262,7 +276,7 @@ export function UsersTable({
   return (
     <div className="flex flex-col gap-3">
       <div className="w-full overflow-x-auto rounded-lg border border-border">
-        <table style={{ width: table.getTotalSize(), tableLayout: "fixed" }} className="caption-bottom text-sm">
+        <table style={{ minWidth: table.getTotalSize(), tableLayout: "fixed" }} className="w-full caption-bottom text-sm">
           <thead className="bg-muted/50">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id} className="border-b border-border">

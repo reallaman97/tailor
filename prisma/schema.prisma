@@ -21,6 +21,9 @@ enum UserRole {
 model User {
   id            String    @id @default(cuid())
   email         String    @unique // login credential — separate from Profile.contactEmail
+  // Human-facing handle chosen at signup. Login still uses email; this is how a
+  // user is identified in the admin tools, tracker, and dashboard.
+  username      String    @unique
   passwordHash  String
   emailVerified DateTime?
   role          UserRole  @default(BIDDER)
@@ -167,10 +170,10 @@ model SkillGroup {
 // A job-application pipeline, not just a resume-generation state: DRAFT is
 // the only pre-submission stage (job info saved, maybe tailored, not yet
 // applied); everything after APPLIED mirrors how the employer's process
-// actually progresses. FAIL/CANCELED/GHOSTED are the three distinct "didn't
-// work out" outcomes — kept separate because they mean different things for
-// follow-up (FAIL = something on our side broke, worth retrying; CANCELED =
-// the employer explicitly passed; GHOSTED = no response after a long wait).
+// actually progresses. FAIL/CANCELED are the two distinct "didn't work out"
+// outcomes — kept separate because they mean different things for follow-up
+// (FAIL = something on our side broke, worth retrying; CANCELED = the employer
+// explicitly passed).
 enum ResumeStatus {
   DRAFT
   APPLIED
@@ -182,7 +185,6 @@ enum ResumeStatus {
   OFFER
   FAIL
   CANCELED
-  GHOSTED
 }
 
 enum RoleTrack {
@@ -243,7 +245,6 @@ model Resume {
   roleTrack  RoleTrack         @default(OTHER)
   source     ApplicationSource @default(OTHER)
 
-  followUpDate DateTime? // reference date only, e.g. "check back on this one"
   notes        String?   @db.Text
 
   approvalStatus ApprovalStatus @default(PENDING)

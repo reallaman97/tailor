@@ -23,12 +23,14 @@ export const MINIMAL_PERSONAL_INFO: PersonalInfoInput = {
 
 /** Creates a throwaway, already-approved user (with a real wrapped DEK) for integration tests against the real dev DB. */
 export async function createTestUser(): Promise<{ id: string; email: string }> {
-  const email = `test-${randomUUID()}@example.com`;
+  const suffix = randomUUID();
+  const email = `test-${suffix}@example.com`;
+  const username = `test_${suffix.replace(/-/g, "").slice(0, 20)}`;
   const passwordHash = await hashPassword("irrelevant-test-password");
   const encryptedDek = wrapDek(generateDek());
 
   const user = await db.user.create({
-    data: { email, passwordHash, encryptedDek, approved: true },
+    data: { email, username, passwordHash, encryptedDek, approved: true },
   });
   return { id: user.id, email: user.email };
 }

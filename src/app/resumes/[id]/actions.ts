@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireResumePlatformAccess, requireSuperAdmin } from "@/lib/auth/require-user";
 import { tailorResume, ProfileIncompleteError } from "@/lib/tailoring/tailor-resume";
 import { ResumeNotFoundError, InvalidScreenshotError, uploadScreenshot } from "@/lib/resumes/resumes";
@@ -31,11 +32,15 @@ export async function generateTailoredResumeAction(
 
   revalidatePath(`/resumes/${resumeId}`);
   revalidatePath("/dashboard");
+  // The resume is now built, so prompt for proof of application right away —
+  // this is the only place a Bidder is offered the upload (the detail page has
+  // no standing upload control).
+  redirect(`/resumes/${resumeId}?upload=1`);
 }
 
 export type DetailsActionState = { error?: string; success?: boolean } | undefined;
 
-/** Source, follow-up date, and notes are superadmin-only — for any user's application, not just their own. */
+/** Source and notes are superadmin-only — for any user's application, not just their own. */
 export async function updateResumeDetailsAction(
   resumeId: string,
   _prevState: DetailsActionState,

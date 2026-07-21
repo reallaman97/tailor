@@ -12,7 +12,7 @@ import { WorkHistorySection } from "./work-history-section";
 import { EducationSection } from "./education-section";
 import { SkillsSection } from "./skills-section";
 import { AssignedUsersManager } from "./assigned-users-manager";
-import { AdminShell } from "@/components/admin-shell";
+import { AccountShell } from "@/components/account-shell";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -22,7 +22,7 @@ export default async function AdminEditProfilePage({
   params: Promise<{ profileId: string }>;
 }) {
   const { profileId } = await params;
-  const admin = await requireSuperAdmin();
+  await requireSuperAdmin();
 
   const profile = await db.profile.findUnique({
     where: { id: profileId },
@@ -39,7 +39,7 @@ export default async function AdminEditProfilePage({
   ]);
 
   return (
-    <AdminShell userEmail={admin.email}>
+    <AccountShell isSuperAdmin>
       <div className="flex flex-col gap-6">
         <PageHeader
           title={personalInfo?.fullName ?? "Untitled profile"}
@@ -65,6 +65,6 @@ export default async function AdminEditProfilePage({
         <EducationSection profileId={profileId} entries={education} />
         <SkillsSection profileId={profileId} groups={skillGroups} />
       </div>
-    </AdminShell>
+    </AccountShell>
   );
 }

@@ -5,17 +5,14 @@ import {
   INTERVIEW_STATUSES,
   REJECTED_STATUSES,
   FAILED_STATUSES,
-  GHOSTED_STATUSES,
   OPEN_STATUSES,
   ROLE_TRACK_OPTIONS,
   SOURCE_OPTIONS,
   getPrimaryStatus,
+  needsFollowUp,
 } from "@/lib/resume-status";
 import type { RoleTrack, ApplicationSource, ResumeStatus } from "@/generated/prisma/client";
 
-// A follow-up is suggested once an in-flight application has gone quiet for
-// this many days, or its explicit follow-up date has arrived.
-const FOLLOW_UP_AFTER_DAYS = 7;
 const WEEKS_SHOWN = 6;
 
 export type OverviewStats = {
@@ -24,7 +21,6 @@ export type OverviewStats = {
   positiveResponses: number;
   rejected: number;
   failed: number;
-  ghosted: number;
   positiveResponseRate: number; // 0-100
   needsFollowUpToday: number;
 };
@@ -60,8 +56,8 @@ export type ProfileRow = {
 /**
  * The trend/today views collapse everything into 3 simplified categories:
  * Positive responses (Reply/Offer), Scheduled (an interview stage reached),
- * Rejected (any of Canceled/Fail/Ghosted). The Overview panel is where the
- * detailed Rejected/Failed/Ghosted split lives.
+ * Rejected (any of Canceled/Fail). The Overview panel is where the detailed
+ * Rejected/Failed split lives.
  */
 export type TrendCounts = {
   positiveResponses: number;
@@ -95,7 +91,7 @@ function startOfWeek(date: Date): Date {
 function classifyTrend(status: ResumeStatus): keyof TrendCounts | null {
   if (INTERVIEW_STATUSES.has(status)) return "scheduled";
   if (status === "REPLY" || status === "OFFER") return "positiveResponses";
-  if (REJECTED_STATUSES.has(status) || FAILED_STATUSES.has(status) || GHOSTED_STATUSES.has(status)) {
+  if (REJECTED_STATUSES.has(status) || FAILED_STATUSES.has(status)) {
     return "rejected";
   }
   return null;
@@ -119,7 +115,6 @@ export async function getDashboardAnalytics(filter: DashboardAnalyticsFilter = {
       roleTrack: true,
       source: true,
       updatedAt: true,
-      followUpDate: true,
       profileId: true,
     },
   });
@@ -133,7 +128,6 @@ export async function getDashboardAnalytics(filter: DashboardAnalyticsFilter = {
     positiveResponses: 0,
     rejected: 0,
     failed: 0,
-    ghosted: 0,
     positiveResponseRate: 0,
     needsFollowUpToday: 0,
   };
@@ -174,20 +168,15 @@ export async function getDashboardAnalytics(filter: DashboardAnalyticsFilter = {
     const isPositive = POSITIVE_STATUSES.has(status);
     const isRejected = REJECTED_STATUSES.has(status);
     const isFailed = FAILED_STATUSES.has(status);
-    const isGhosted = GHOSTED_STATUSES.has(status);
     const isOpen = OPEN_STATUSES.has(status);
 
     if (status === "DRAFT" || status === "APPLIED") overview.awaitingResponse++;
     if (isPositive) overview.positiveResponses++;
     if (isRejected) overview.rejected++;
     if (isFailed) overview.failed++;
-    if (isGhosted) overview.ghosted++;
 
-    const needsFollowUp =
-      isOpen &&
-      (Math.floor((now.getTime() - r.updatedAt.getTime()) / 86_400_000) >= FOLLOW_UP_AFTER_DAYS ||
-        (r.followUpDate ? dateOnly(r.followUpDate) <= today : false));
-    if (needsFollowUp) overview.needsFollowUpToday++;
+    const followUp = needsFollowUp(r.statuses, r.updatedAt, now);
+    if (followUp) overview.needsFollowUpToday++;
 
     if (!profileTotals.has(r.profileId)) {
       profileTotals.set(r.profileId, {
@@ -203,9 +192,9 @@ export async function getDashboardAnalytics(filter: DashboardAnalyticsFilter = {
     profileBucket.total++;
     if (status === "DRAFT" || status === "APPLIED") profileBucket.awaitingResponse++;
     if (isPositive) profileBucket.positiveResponses++;
-    if (isRejected || isFailed || isGhosted) profileBucket.rejected++;
+    if (isRejected || isFailed) profileBucket.rejected++;
     if (isOpen) profileBucket.pending++;
-    if (needsFollowUp) profileBucket.needsFollowUp++;
+    if (followUp) profileBucket.needsFollowUp++;
 
     const roleBucket = roleTrackTotals.get(r.roleTrack)!;
     roleBucket.applied++;

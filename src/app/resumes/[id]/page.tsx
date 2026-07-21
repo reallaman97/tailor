@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireResumePlatformAccess, requireSuperAdmin } from "@/lib/auth/require-user";
-import { getResume } from "@/lib/resumes/resumes";
-import { getApplicationDetail } from "@/lib/admin/applications";
+import { requireResumePlatformAccess } from "@/lib/auth/require-user";
+import { getResume, type ResumeDetail } from "@/lib/resumes/resumes";
+import { getApplicationDetail, type AdminApplicationDetail } from "@/lib/admin/applications";
 import { getResumeFieldsForResume } from "@/lib/profile/resume-fields";
-import { getTailoredContent } from "@/lib/tailoring/tailor-resume";
+import { decryptTailoredContent } from "@/lib/tailoring/tailor-resume";
 import { GenerateButton } from "./generate-button";
 import { DetailsForm } from "./details-form";
 import { ScreenshotUploadDialog } from "./screenshot-upload-dialog";
 import { StatusMultiSelect } from "../status-select";
+import { ApprovalSelect } from "../approval-select";
 import { AppShell } from "@/components/app-shell";
 import { ApprovalStatusCell } from "@/components/approval-status-cell";
 import { StatusBadges } from "@/components/status-badges";
@@ -16,13 +17,30 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
-import { ROLE_TRACK_LABEL } from "@/lib/resume-status";
+import { ROLE_TRACK_LABEL, getPrimaryStatus } from "@/lib/resume-status";
 import { ExternalLinkIcon, DownloadIcon } from "@/components/icons";
+import type { ResumeStatus } from "@/generated/prisma/client";
 
 const DAY_MS = 86_400_000;
 
-function daysOpen(createdAt: Date): number {
-  return Math.floor((Date.now() - createdAt.getTime()) / DAY_MS);
+/**
+ * Days the application has been open, counting from when it was Applied (or
+ * from created, if it was never applied). The count freezes once the
+ * application moves beyond "Applied" — i.e. its first response/outcome — using
+ * the Updated timestamp as that freeze point; while still just Applied (no
+ * response) it keeps counting to now.
+ */
+function daysOpen(resume: {
+  appliedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  statuses: ResumeStatus[];
+}): number {
+  const start = (resume.appliedAt ?? resume.createdAt).getTime();
+  const primary = getPrimaryStatus(resume.statuses);
+  const stillWaiting = primary === "DRAFT" || primary === "APPLIED";
+  const end = stillWaiting ? Date.now() : resume.updatedAt.getTime();
+  return Math.max(0, Math.floor((end - start) / DAY_MS));
 }
 
 export default async function ResumeDetailPage({
@@ -37,33 +55,38 @@ export default async function ResumeDetailPage({
   const user = await requireResumePlatformAccess();
   const isSuperAdmin = user.role === "SUPERADMIN";
 
-  let resume = await getResume(user.id, id);
-  let isOwnResume = true;
-  let ownerUserId = user.id;
-
-  if (!resume && isSuperAdmin) {
-    // Re-check fresh from the DB before granting cross-user access — never
-    // trust the cached JWT role claim for an actual authorization decision.
-    await requireSuperAdmin();
+  // Single authoritative fetch per role, no redundant round trips:
+  // - Superadmins may view any application, so read it unscoped in one query
+  //   (it already carries ownership). `user.role` above is the fresh DB value
+  //   from requireResumePlatformAccess, so no second role re-check is needed.
+  // - Everyone else reads their own (profile-scoped) resume.
+  let resume: ResumeDetail | AdminApplicationDetail | null;
+  let ownerUserId: string;
+  if (isSuperAdmin) {
     const adminResume = await getApplicationDetail(id);
-    if (adminResume) {
-      resume = adminResume;
-      isOwnResume = adminResume.userId === user.id;
-      ownerUserId = adminResume.userId;
-    }
+    resume = adminResume;
+    ownerUserId = adminResume?.userId ?? user.id;
+  } else {
+    resume = await getResume(user.id, id);
+    ownerUserId = user.id;
   }
   if (!resume) notFound();
 
+  const isOwnResume = ownerUserId === user.id;
+
   // Shown whenever this entry wasn't created by the current viewer — either
   // a teammate sharing the same profile, or (for a superadmin) any user's entry.
-  const appliedByOther = resume.appliedByEmail !== user.email ? resume.appliedByEmail : null;
+  // Compared by the stable email, but displayed by the creator's username.
+  const appliedByOther = resume.appliedByEmail !== user.email ? resume.appliedByName : null;
 
   // Fields are anchored to the resume's own profile (not the viewer's current
   // assignment), so the work-history labels below always match the tailored
   // content — which is keyed to the same profileId — even after a reassignment.
+  // tailoredContentEnc was already loaded above, so decrypt it in place rather
+  // than re-fetching the same resume row.
   const [resumeFields, tailoredContent] = await Promise.all([
     getResumeFieldsForResume(ownerUserId, resume.profileId),
-    getTailoredContent(ownerUserId, id),
+    decryptTailoredContent(resume.profileId, resume.tailoredContentEnc),
   ]);
 
   const workHistoryById = new Map((resumeFields?.workHistory ?? []).map((w) => [w.id, w]));
@@ -195,13 +218,21 @@ export default async function ResumeDetailPage({
             {isSuperAdmin ? (
               <StatusMultiSelect resumeId={resume.id} statuses={resume.statuses} />
             ) : (
-              <StatusBadges statuses={resume.statuses} />
+              <StatusBadges statuses={resume.statuses} nowrap />
             )}
-            <ApprovalStatusCell
-              resumeId={resume.id}
-              approvalStatus={resume.approvalStatus}
-              hasScreenshot={resume.hasScreenshot}
-            />
+            {isSuperAdmin ? (
+              <ApprovalSelect
+                resumeId={resume.id}
+                approvalStatus={resume.approvalStatus}
+                hasScreenshot={resume.hasScreenshot}
+              />
+            ) : (
+              <ApprovalStatusCell
+                resumeId={resume.id}
+                approvalStatus={resume.approvalStatus}
+                hasScreenshot={resume.hasScreenshot}
+              />
+            )}
           </div>
 
           <div className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
@@ -214,7 +245,7 @@ export default async function ResumeDetailPage({
                   Role track: <span className="text-foreground">{ROLE_TRACK_LABEL[resume.roleTrack]}</span>
                 </span>
                 <span className="text-muted-foreground">
-                  Days open: <span className="text-foreground">{daysOpen(resume.createdAt)}</span>
+                  Days open: <span className="text-foreground">{daysOpen(resume)}</span>
                 </span>
                 <span className="text-muted-foreground">
                   Updated: <span className="text-foreground">{resume.updatedAt.toLocaleDateString()}</span>
@@ -229,12 +260,7 @@ export default async function ResumeDetailPage({
                 <CardTitle>Tracking details</CardTitle>
               </CardHeader>
               <CardContent>
-                <DetailsForm
-                  resumeId={resume.id}
-                  source={resume.source}
-                  followUpDate={resume.followUpDate}
-                  notes={resume.notes}
-                />
+                <DetailsForm resumeId={resume.id} source={resume.source} notes={resume.notes} />
               </CardContent>
             </Card>
           )}
@@ -246,11 +272,27 @@ export default async function ResumeDetailPage({
             </CardHeader>
             <CardContent>
               {isOwnResume ? (
-                <ScreenshotUploadDialog
-                  resumeId={resume.id}
-                  hasScreenshot={resume.hasScreenshot}
-                  autoOpen={upload === "1"}
-                />
+                <div className="flex flex-col gap-3">
+                  {resume.hasScreenshot ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- authenticated, per-application binary served from our own route, not a static/optimizable asset
+                    <img
+                      src={`/api/resumes/${resume.id}/screenshot`}
+                      alt="Uploaded proof of application"
+                      className="max-h-80 w-auto rounded-md border border-border object-contain"
+                    />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No proof uploaded yet. You&apos;ll be prompted to upload it right after you build the resume above.
+                    </p>
+                  )}
+                  {/* No standing upload control: the dialog only opens right after a build (?upload=1). */}
+                  <ScreenshotUploadDialog
+                    resumeId={resume.id}
+                    hasScreenshot={resume.hasScreenshot}
+                    autoOpen={upload === "1"}
+                    showTrigger={false}
+                  />
+                </div>
               ) : resume.hasScreenshot ? (
                 // eslint-disable-next-line @next/next/no-img-element -- authenticated, per-application binary served from our own route, not a static/optimizable asset
                 <img

@@ -9,7 +9,6 @@ describe("getPrimaryStatus", () => {
   it("prefers a terminal outcome over earlier in-progress stages", () => {
     expect(getPrimaryStatus(["APPLIED", "REPLY", "FAIL"])).toBe("FAIL");
     expect(getPrimaryStatus(["APPLIED", "REPLY", "CANCELED"])).toBe("CANCELED");
-    expect(getPrimaryStatus(["APPLIED", "REPLY", "GHOSTED"])).toBe("GHOSTED");
   });
 
   it("prefers OFFER over every other status", () => {

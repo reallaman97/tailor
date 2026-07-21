@@ -45,5 +45,7 @@ export async function createResumeAction(
     throw err;
   }
 
-  redirect(`/resumes/${resumeId}?upload=1`);
+  // Proof-of-application upload is prompted after building the resume, not here
+  // at creation — see generateTailoredResumeAction.
+  redirect(`/resumes/${resumeId}`);
 }
