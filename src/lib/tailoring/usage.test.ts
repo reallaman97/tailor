@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import { createTestUser, deleteTestUser } from "@/lib/profile/test-helpers";
-import { recordUsageEvent, assertUnderDailyLimit, RateLimitExceededError } from "./usage";
+import { recordUsageEvent } from "./usage";
 
-describe("usage tracking and rate limiting (integration)", () => {
+// The daily generation cap is enforced atomically via consumeRateLimit (see
+// rate-limit.test.ts); UsageEvent here is purely cost/token accounting.
+describe("usage tracking (integration)", () => {
   let userId: string;
 
   beforeAll(async () => {
@@ -12,10 +14,6 @@ describe("usage tracking and rate limiting (integration)", () => {
 
   afterAll(async () => {
     await deleteTestUser(userId);
-  });
-
-  it("allows generation when under the limit", async () => {
-    await expect(assertUnderDailyLimit(userId, "tailoring", 5)).resolves.toBeUndefined();
   });
 
   it("records a usage event with a non-zero cost for realistic token counts", async () => {
@@ -51,26 +49,5 @@ describe("usage tracking and rate limiting (integration)", () => {
     });
     expect(event.inputTokens).toBe(1000);
     expect(event.estimatedCostMicros).toBe(0);
-  });
-
-  it("throws once the daily limit is reached", async () => {
-    const freshUser = await createTestUser();
-    try {
-      for (let i = 0; i < 3; i++) {
-        await recordUsageEvent({
-          userId: freshUser.id,
-          kind: "tailoring",
-          model: "gpt-4.1-mini",
-          inputTokens: 100,
-          outputTokens: 50,
-        });
-      }
-
-      await expect(assertUnderDailyLimit(freshUser.id, "tailoring", 3)).rejects.toThrow(
-        RateLimitExceededError
-      );
-    } finally {
-      await deleteTestUser(freshUser.id);
-    }
   });
 });

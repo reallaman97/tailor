@@ -1,22 +1,22 @@
 import { Resend } from "resend";
+import { getServerEnv } from "@/lib/env";
 
 let cachedClient: Resend | null = null;
 
 function getClient(): Resend {
   if (!cachedClient) {
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) throw new Error("RESEND_API_KEY environment variable is not set");
-    cachedClient = new Resend(apiKey);
+    const { RESEND_API_KEY } = getServerEnv();
+    if (!RESEND_API_KEY) throw new Error("RESEND_API_KEY is not set — cannot send email");
+    cachedClient = new Resend(RESEND_API_KEY);
   }
   return cachedClient;
 }
 
 export async function sendPasswordResetEmail(to: string, resetUrl: string): Promise<void> {
-  const from = process.env.EMAIL_FROM;
-  if (!from) throw new Error("EMAIL_FROM environment variable is not set");
+  const { EMAIL_FROM } = getServerEnv();
 
   const { error } = await getClient().emails.send({
-    from,
+    from: EMAIL_FROM,
     to,
     subject: "Reset your password",
     html: `

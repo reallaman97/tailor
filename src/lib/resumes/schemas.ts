@@ -32,12 +32,16 @@ export const resumeStatusSchema = z.enum([
 
 export const createResumeSchema = z.object({
   jobLink: z.union([z.url(), z.literal("")]).optional(),
-  companyName: z.string().trim().min(1, "Company name is required"),
-  jobTitle: z.string().trim().min(1, "Job title is required"),
+  companyName: z.string().trim().min(1, "Company name is required").max(200, "Company name is too long"),
+  jobTitle: z.string().trim().min(1, "Job title is required").max(200, "Job title is too long"),
+  // Cap length: this text is both stored and forwarded to the paid LLM, so an
+  // unbounded paste is a storage + cost-amplification vector. ~20k chars is
+  // well beyond any real posting.
   jobDescription: z
     .string()
     .trim()
-    .min(20, "Paste the full job description (at least 20 characters)"),
+    .min(20, "Paste the full job description (at least 20 characters)")
+    .max(20_000, "Job description is too long (max 20,000 characters)"),
   // roleTrack is always AI-classified server-side and never trusted from a
   // client; status/source are set by the server action per who's creating it
   // (a normal user's own application vs. a superadmin building on behalf of
@@ -54,17 +58,16 @@ export const updateResumeStatusSchema = z.object({
   statuses: z.array(resumeStatusSchema).min(1, "At least one status is required"),
 });
 
-const optionalTrimmed = z
-  .string()
-  .optional()
-  .transform((value) => (value && value.trim() !== "" ? value.trim() : undefined));
-
 // roleTrack is deliberately absent — it's AI-classified at creation time and
 // never manually editable, by anyone, afterward.
 export const updateResumeDetailsSchema = z.object({
   source: applicationSourceSchema,
   followUpDate: z.union([z.iso.date(), z.literal("")]).optional(),
-  notes: optionalTrimmed,
+  notes: z
+    .string()
+    .max(5_000, "Notes are too long (max 5,000 characters)")
+    .optional()
+    .transform((value) => (value && value.trim() !== "" ? value.trim() : undefined)),
 });
 
 export type UpdateResumeDetailsInput = z.infer<typeof updateResumeDetailsSchema>;

@@ -14,10 +14,15 @@ async function getClient(): Promise<OpenAI> {
   return new OpenAI({ apiKey });
 }
 
-function buildInput(resumeFields: ResumeFields, jobDescription: string): string {
+export function buildInput(resumeFields: ResumeFields, jobDescription: string): string {
+  // Contact PII (email, phone) is never used in tailored output — the model
+  // only produces the summary, work-history bullets, and ordered skills — so
+  // it must not be shipped to the LLM provider. Street address and DOB are
+  // already excluded upstream (getResumeFields never reads them).
+  const { contactEmail: _contactEmail, phone: _phone, ...modelFields } = resumeFields;
   return [
     "CANDIDATE PROFILE (JSON):",
-    JSON.stringify(resumeFields, null, 2),
+    JSON.stringify(modelFields, null, 2),
     "",
     "JOB DESCRIPTION:",
     jobDescription,

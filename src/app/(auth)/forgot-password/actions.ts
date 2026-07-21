@@ -4,7 +4,8 @@ import { db } from "@/lib/db";
 import { generateResetToken, RESET_TOKEN_TTL_MS } from "@/lib/auth/reset-tokens";
 import { sendPasswordResetEmail } from "@/lib/email/resend";
 import { forgotPasswordSchema } from "@/lib/auth/schemas";
-import { assertUnderRateLimit, recordRateLimitHit, RateLimitExceededError } from "@/lib/rate-limit";
+import { consumeRateLimit, RateLimitExceededError } from "@/lib/rate-limit";
+import { getServerEnv } from "@/lib/env";
 
 const RESET_REQUEST_RATE_LIMIT = 3;
 const RESET_REQUEST_RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
@@ -25,17 +26,16 @@ export async function forgotPasswordAction(
 
   const { email } = parsed.data;
 
-  // Rate-limited by email BEFORE the existence check (and unconditionally
-  // recorded below), so the limit itself never reveals whether the account
-  // exists — the same as the generic response it can precede or follow.
+  // Rate-limited by email BEFORE the existence check, so the limit itself never
+  // reveals whether the account exists — the same as the generic response it
+  // can precede or follow. Atomic check-and-record closes the concurrency race.
   const rateLimitKey = `password-reset:${email}`;
   try {
-    await assertUnderRateLimit(rateLimitKey, RESET_REQUEST_RATE_LIMIT, RESET_REQUEST_RATE_WINDOW_MS);
+    await consumeRateLimit(rateLimitKey, RESET_REQUEST_RATE_LIMIT, RESET_REQUEST_RATE_WINDOW_MS);
   } catch (err) {
     if (err instanceof RateLimitExceededError) return { error: err.message };
     throw err;
   }
-  await recordRateLimitHit(rateLimitKey);
 
   // Never reveal whether the account exists — same response either way.
   const user = await db.user.findUnique({ where: { email } });
@@ -52,8 +52,8 @@ export async function forgotPasswordAction(
     },
   });
 
-  const appUrl = process.env.APP_URL ?? "http://localhost:3000";
-  const resetUrl = `${appUrl}/reset-password?token=${raw}`;
+  const { APP_URL } = getServerEnv();
+  const resetUrl = `${APP_URL}/reset-password?token=${raw}`;
 
   await sendPasswordResetEmail(email, resetUrl);
 

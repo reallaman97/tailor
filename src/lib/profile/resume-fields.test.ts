@@ -4,7 +4,7 @@ import { createTestUser, deleteTestUser } from "@/lib/profile/test-helpers";
 import { createProfile } from "@/lib/profile/personal-info";
 import { createWorkHistoryEntry } from "@/lib/profile/work-history";
 import { assignProfileToUser } from "@/lib/admin/profiles";
-import { getResumeFields } from "@/lib/profile/resume-fields";
+import { getResumeFields, getResumeFieldsForResume } from "@/lib/profile/resume-fields";
 
 describe("getResumeFields — the reference-only-data boundary (integration)", () => {
   let userId: string;
@@ -75,5 +75,62 @@ describe("getResumeFields — the reference-only-data boundary (integration)", (
     expect(fields?.city).toBe("Austin");
     expect(fields?.workHistory).toHaveLength(1);
     expect(fields?.workHistory[0].company).toBe("Acme");
+  });
+});
+
+// Regression guard for the cross-candidate PII bug: a resume must render from
+// the profile it was logged/generated against, never from whatever profile the
+// owner happens to be assigned to now (which can differ after a reassignment).
+describe("getResumeFieldsForResume — anchors rendering to the resume's profile (integration)", () => {
+  let userId: string;
+  const profileIds: string[] = [];
+
+  async function makeProfile(fullName: string): Promise<string> {
+    const id = await createProfile({
+      fullName,
+      contactEmail: `${fullName.replace(/\s+/g, "").toLowerCase()}@example.com`,
+      phone: "555-0100",
+      linkedinUrl: undefined,
+      professionalSummary: undefined,
+      city: undefined,
+      state: undefined,
+      dateOfBirth: undefined,
+      addressLine1: undefined,
+      addressLine2: undefined,
+      postalCode: undefined,
+      country: undefined,
+    });
+    profileIds.push(id);
+    return id;
+  }
+
+  beforeAll(async () => {
+    ({ id: userId } = await createTestUser());
+  });
+
+  afterAll(async () => {
+    await deleteTestUser(userId);
+    for (const id of profileIds) await db.profile.delete({ where: { id } });
+  });
+
+  it("uses the resume's stored profile, not the owner's current assignment", async () => {
+    const generatedAgainst = await makeProfile("Alice Generated");
+    const reassignedTo = await makeProfile("Bob Reassigned");
+
+    // The owner is now assigned to a DIFFERENT profile than the resume was
+    // generated against — the exact post-reassignment condition that produced
+    // wrong-candidate PII in exports.
+    await assignProfileToUser(reassignedTo, userId);
+
+    const fields = await getResumeFieldsForResume(userId, generatedAgainst);
+    expect(fields?.fullName).toBe("Alice Generated");
+  });
+
+  it("falls back to the owner's current assignment when the resume has no profile", async () => {
+    const current = await makeProfile("Carol Current");
+    await assignProfileToUser(current, userId);
+
+    const fields = await getResumeFieldsForResume(userId, null);
+    expect(fields?.fullName).toBe("Carol Current");
   });
 });

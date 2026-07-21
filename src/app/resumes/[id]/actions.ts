@@ -6,7 +6,7 @@ import { tailorResume, ProfileIncompleteError } from "@/lib/tailoring/tailor-res
 import { ResumeNotFoundError, InvalidScreenshotError, uploadScreenshot } from "@/lib/resumes/resumes";
 import { updateApplicationDetails } from "@/lib/admin/applications";
 import { updateResumeDetailsSchema } from "@/lib/resumes/schemas";
-import { RateLimitExceededError } from "@/lib/tailoring/usage";
+import { RateLimitExceededError } from "@/lib/rate-limit";
 
 export type GenerateState = { error?: string } | undefined;
 

@@ -3,7 +3,7 @@ import { requireResumePlatformAccess } from "@/lib/auth/require-user";
 import { db } from "@/lib/db";
 import { getResume } from "@/lib/resumes/resumes";
 import { getApplicationDetail } from "@/lib/admin/applications";
-import { getResumeFields } from "@/lib/profile/resume-fields";
+import { getResumeFieldsForResume } from "@/lib/profile/resume-fields";
 import { getTailoredContent } from "@/lib/tailoring/tailor-resume";
 import { buildResumeDocument } from "@/lib/export/build-document";
 import { renderResumePdf } from "@/lib/export/render-pdf";
@@ -36,7 +36,10 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "Resume not found" }, { status: 404 });
   }
 
-  const resumeFields = await getResumeFields(ownerUserId);
+  // Anchor the exported fields to the resume's own profile so a name/contact
+  // block can never be paired with another profile's tailored bullets after a
+  // reassignment (the tailored content below is keyed to the same profileId).
+  const resumeFields = await getResumeFieldsForResume(ownerUserId, resume.profileId);
   if (!resumeFields) {
     return NextResponse.json(
       { error: "Save your personal info before exporting a resume" },

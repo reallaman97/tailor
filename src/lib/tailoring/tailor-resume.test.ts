@@ -7,8 +7,10 @@ import { getProfileDek } from "@/lib/profile/dek";
 import { encryptJson } from "@/lib/profile/crypto";
 import { createResume } from "@/lib/resumes/resumes";
 import { ResumeNotFoundError } from "@/lib/resumes/resumes";
-import { RateLimitExceededError, recordUsageEvent } from "@/lib/tailoring/usage";
+import { RateLimitExceededError, consumeRateLimit } from "@/lib/rate-limit";
 import { tailorResume, getTailoredContent, sanitizeTailoredContent, ProfileIncompleteError } from "./tailor-resume";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 describe("sanitizeTailoredContent (pure)", () => {
   it("drops work history entries with an entryId the candidate doesn't have", () => {
@@ -56,6 +58,7 @@ describe("tailorResume error paths (integration, no live LLM call)", () => {
   });
 
   afterAll(async () => {
+    await db.rateLimitCounter.deleteMany({ where: { key: `tailoring:${userId}` } });
     if (profileId) await db.profile.delete({ where: { id: profileId } });
     await deleteTestUser(userId);
   });
@@ -88,15 +91,10 @@ describe("tailorResume error paths (integration, no live LLM call)", () => {
     // No OPENAI_API_KEY is configured in this test environment, so if
     // tailorResume reached the LLM call it would throw a different, unrelated
     // error — asserting RateLimitExceededError here proves the rate limit
-    // check runs (and blocks) before that point.
+    // check runs (and blocks) before that point. Pre-fill today's reservation
+    // quota so the reservation tailorResume makes is the one that's rejected.
     for (let i = 0; i < 3; i++) {
-      await recordUsageEvent({
-        userId,
-        kind: "tailoring",
-        model: "gpt-4.1-mini",
-        inputTokens: 10,
-        outputTokens: 10,
-      });
+      await consumeRateLimit(`tailoring:${userId}`, 100, DAY_MS);
     }
 
     const originalLimit = process.env.TAILORING_DAILY_LIMIT;

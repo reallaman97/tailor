@@ -1,7 +1,5 @@
 import { db } from "@/lib/db";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 // Micros (millionths of a dollar) per 1M tokens — i.e. $X becomes X_000_000.
 // A single call often costs a fraction of a cent, so this unit is chosen to
 // avoid rounding real costs down to zero. Unknown models record actual token
@@ -13,12 +11,6 @@ const MODEL_PRICING_MICROS_PER_MILLION_TOKENS: Record<
   "gpt-4.1-mini": { input: 400_000, output: 1_600_000 },
   "gpt-4.1": { input: 2_000_000, output: 8_000_000 },
 };
-
-export class RateLimitExceededError extends Error {
-  constructor(limit: number) {
-    super(`Daily generation limit reached (${limit}/day). Try again tomorrow.`);
-  }
-}
 
 function estimateCostMicros(model: string, inputTokens: number, outputTokens: number): number {
   const pricing = MODEL_PRICING_MICROS_PER_MILLION_TOKENS[model];
@@ -51,15 +43,4 @@ export async function recordUsageEvent(params: {
       ),
     },
   });
-}
-
-export async function assertUnderDailyLimit(
-  userId: string,
-  kind: "tailoring",
-  limit: number
-): Promise<void> {
-  const count = await db.usageEvent.count({
-    where: { userId, kind, createdAt: { gte: new Date(Date.now() - DAY_MS) } },
-  });
-  if (count >= limit) throw new RateLimitExceededError(limit);
 }

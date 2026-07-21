@@ -1,7 +1,12 @@
 import { z } from "zod";
 
 const email = z.email().transform((value) => value.toLowerCase());
-const password = z.string().min(8, "Password must be at least 8 characters");
+// Max length caps the Argon2 input — an unbounded password is a cheap
+// CPU/memory DoS at hashing/verification time.
+const password = z
+  .string()
+  .min(8, "Password must be at least 8 characters")
+  .max(128, "Password must be at most 128 characters");
 
 export const signupSchema = z
   .object({

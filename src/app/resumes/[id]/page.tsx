@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireResumePlatformAccess, requireSuperAdmin } from "@/lib/auth/require-user";
 import { getResume } from "@/lib/resumes/resumes";
 import { getApplicationDetail } from "@/lib/admin/applications";
-import { getResumeFields } from "@/lib/profile/resume-fields";
+import { getResumeFieldsForResume } from "@/lib/profile/resume-fields";
 import { getTailoredContent } from "@/lib/tailoring/tailor-resume";
 import { GenerateButton } from "./generate-button";
 import { DetailsForm } from "./details-form";
@@ -58,9 +58,13 @@ export default async function ResumeDetailPage({
   // a teammate sharing the same profile, or (for a superadmin) any user's entry.
   const appliedByOther = resume.appliedByEmail !== user.email ? resume.appliedByEmail : null;
 
-  const [resumeFields, tailoredContent] = isOwnResume
-    ? await Promise.all([getResumeFields(user.id), getTailoredContent(user.id, id)])
-    : [null, await getTailoredContent(ownerUserId, id)];
+  // Fields are anchored to the resume's own profile (not the viewer's current
+  // assignment), so the work-history labels below always match the tailored
+  // content — which is keyed to the same profileId — even after a reassignment.
+  const [resumeFields, tailoredContent] = await Promise.all([
+    getResumeFieldsForResume(ownerUserId, resume.profileId),
+    getTailoredContent(ownerUserId, id),
+  ]);
 
   const workHistoryById = new Map((resumeFields?.workHistory ?? []).map((w) => [w.id, w]));
 

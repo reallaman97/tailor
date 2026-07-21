@@ -323,13 +323,16 @@ model AppSettings {
 
 // ── Rate limiting ──────────────────────────────────────
 
-// Not tied to User: signup limiting is keyed by IP before any account
-// exists, and login limiting is keyed by the attempted email even when it
-// doesn't correspond to a real account.
-model RateLimitHit {
-  id        String   @id @default(cuid())
-  key       String // e.g. "login:user@example.com" or "signup:1.2.3.4"
-  createdAt DateTime @default(now())
+// Not tied to User: signup/reset limiting is keyed by email and login by IP
+// before any account is known. One row per (key, time window); the counter is
+// incremented atomically per attempt (see src/lib/rate-limit.ts). Fixed-window
+// buckets so an atomic upsert can enforce the limit without a lock held across
+// round trips.
+model RateLimitCounter {
+  key         String // e.g. "login:ip:1.2.3.4" or "signup:1.2.3.4"
+  windowStart DateTime // start of the fixed window this counter covers
+  count       Int      @default(0)
 
-  @@index([key, createdAt])
+  @@id([key, windowStart])
+  @@index([windowStart]) // for pruning expired windows
 }

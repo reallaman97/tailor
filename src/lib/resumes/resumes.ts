@@ -18,6 +18,11 @@ export class DuplicateApplicationError extends Error {
 
 export type ResumeSummary = {
   id: string;
+  /** The candidate profile this entry is anchored to — the authoritative source
+   * for rendering/exporting it, so its fields and any tailored content always
+   * come from the same profile even after a reassignment. Null if none was
+   * assigned when it was logged. */
+  profileId: string | null;
   companyName: string;
   jobTitle: string;
   jobLink: string | null;
@@ -44,6 +49,7 @@ export type ResumeDetail = ResumeSummary & {
 
 const SUMMARY_SELECT = {
   id: true,
+  profileId: true,
   companyName: true,
   jobTitle: true,
   jobLink: true,
@@ -61,6 +67,7 @@ const SUMMARY_SELECT = {
 
 function toSummary(row: {
   id: string;
+  profileId: string | null;
   companyName: string;
   jobTitle: string;
   jobLink: string | null;
@@ -77,6 +84,7 @@ function toSummary(row: {
 }): ResumeSummary {
   return {
     id: row.id,
+    profileId: row.profileId,
     companyName: row.companyName,
     jobTitle: row.jobTitle,
     jobLink: row.jobLink,
