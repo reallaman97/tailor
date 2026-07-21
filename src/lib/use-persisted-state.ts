@@ -1,6 +1,17 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
+
+const listeners = new Map<string, Set<() => void>>();
+
+function getListeners(key: string): Set<() => void> {
+  let set = listeners.get(key);
+  if (!set) {
+    set = new Set();
+    listeners.set(key, set);
+  }
+  return set;
+}
 
 function readRaw(key: string): string | null {
   try {
@@ -16,6 +27,16 @@ function writeRaw(key: string, raw: string) {
   } catch {
     // ignore quota/unavailable storage
   }
+  getListeners(key).forEach((notify) => notify());
+}
+
+function parseOr<T>(raw: string | null, fallback: T): T {
+  if (raw === null) return fallback;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
 }
 
 /**
@@ -23,45 +44,52 @@ function writeRaw(key: string, raw: string) {
  * (table filters/column widths, form selections) survives navigating away
  * and back, since each page load is a fresh component instance.
  *
- * The stored value is read once, in useState's lazy initializer (runs
- * synchronously during the first render — not in an effect, so there's no
- * cascading-render lint violation, and not from a ref, which this project's
- * lint forbids reading during render). From then on it's plain React state:
- * updated only by calling the returned setter, never re-parsed from
- * localStorage on every render. An earlier version re-ran JSON.parse on
- * every render whenever anything was already stored, handing a brand-new
- * object/array reference to callers each time — TanStack Table's controlled
- * `state` read that as "state changed" on every render and recomputed
- * continuously, freezing the page. Plain useState can't do that: its
- * returned value only changes when the setter is actually called.
+ * Reads via useSyncExternalStore, which is React's sanctioned way to handle
+ * exactly this: `getServerSnapshot` reports `null` (localStorage doesn't
+ * exist on the server) and React deliberately reuses that for the client's
+ * *first* (hydration) render too, so it matches the server-rendered markup
+ * exactly — no mismatch — then re-renders with the real client value
+ * immediately after. A lazy useState initializer (an earlier version of this
+ * hook) reads localStorage during the client's first render, which can
+ * differ from the server's markup whenever something was already stored
+ * (e.g. a previously resized table column) — that's a real hydration
+ * mismatch, not just a cosmetic one, and Next surfaces it as a console error.
  *
- * Server-rendered markup can't read localStorage, so the server and the
- * client's first render both use `initial` — the restored value (if any)
- * applies from the very first client render's lazy initializer, which for a
- * client component runs before paint, so there's nothing to flicker.
+ * The parsed value is memoized on the raw string (via a first-render-frozen
+ * `stableInitial` fallback, so the memo key never includes a fresh literal
+ * default) — parsing fresh on every render was a second, earlier bug: it
+ * handed callers a brand-new object/array reference each time even when
+ * nothing changed, which made TanStack Table's controlled state think it
+ * had changed on every render and recompute continuously, freezing the page.
  */
 export function usePersistedState<T>(key: string, initial: T) {
-  const [value, setValue] = useState<T>(() => {
-    if (typeof window === "undefined") return initial;
-    const raw = readRaw(key);
-    if (raw === null) return initial;
-    try {
-      return JSON.parse(raw) as T;
-    } catch {
-      return initial;
-    }
-  });
+  const [stableInitial] = useState(initial);
 
-  const persist = useCallback(
-    (next: T | ((prev: T) => T)) => {
-      setValue((prev) => {
-        const resolved = typeof next === "function" ? (next as (prev: T) => T)(prev) : next;
-        writeRaw(key, JSON.stringify(resolved));
-        return resolved;
-      });
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      const set = getListeners(key);
+      set.add(onStoreChange);
+      return () => set.delete(onStoreChange);
     },
     [key]
   );
 
-  return [value, persist] as const;
+  const raw = useSyncExternalStore(
+    subscribe,
+    () => readRaw(key),
+    () => null
+  );
+
+  const value = useMemo(() => parseOr(raw, stableInitial), [raw, stableInitial]);
+
+  const setValue = useCallback(
+    (next: T | ((prev: T) => T)) => {
+      const current = parseOr(readRaw(key), stableInitial);
+      const resolved = typeof next === "function" ? (next as (prev: T) => T)(current) : next;
+      writeRaw(key, JSON.stringify(resolved));
+    },
+    [key, stableInitial]
+  );
+
+  return [value, setValue] as const;
 }

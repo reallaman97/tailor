@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import Link from "next/link";
 import { resetPasswordAction } from "./actions";
 import { FormField } from "@/components/ui/form-field";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { CheckCircleIcon } from "@/components/icons";
@@ -30,10 +30,10 @@ export function ResetPasswordForm({ token }: { token: string }) {
     <form action={formAction} className="flex flex-col gap-4">
       <input type="hidden" name="token" value={token} />
       <FormField label="New password" htmlFor="password">
-        <Input id="password" name="password" type="password" required minLength={8} autoFocus />
+        <PasswordInput id="password" name="password" required minLength={8} autoFocus />
       </FormField>
       <FormField label="Confirm new password" htmlFor="confirmPassword">
-        <Input id="confirmPassword" name="confirmPassword" type="password" required minLength={8} />
+        <PasswordInput id="confirmPassword" name="confirmPassword" required minLength={8} />
       </FormField>
 
       {state?.error && <Alert variant="destructive">{state.error}</Alert>}

@@ -5,7 +5,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { ToolCard } from "@/components/tool-card";
 import { Logo } from "@/components/logo";
 import { Footer } from "@/components/footer";
-import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LogOutIcon, UsersIcon, FolderIcon } from "@/components/icons";
 
 export default async function Home() {
@@ -22,11 +22,17 @@ export default async function Home() {
         <div className="flex-1" />
         <span className="hidden max-w-[14rem] truncate text-xs text-muted-foreground md:inline">{user.email}</span>
         <ThemeToggle />
-        <form action={signOutAction}>
-          <Button type="submit" variant="ghost" size="icon" aria-label="Log out">
-            <LogOutIcon className="size-4" />
-          </Button>
-        </form>
+        <ConfirmDialog
+          title="Log out?"
+          description="You'll need to sign in again to continue."
+          confirmLabel="Log out"
+          confirmVariant="primary"
+          action={signOutAction}
+          triggerVariant="ghost"
+          triggerSize="icon"
+          triggerLabel="Log out"
+          triggerContent={<LogOutIcon className="size-4" />}
+        />
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-12 sm:px-8">

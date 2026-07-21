@@ -37,6 +37,7 @@ export default function GlobalError({
               color: "white",
               padding: "0.5rem 1rem",
               fontSize: "0.875rem",
+              cursor: "pointer",
             }}
           >
             Try again

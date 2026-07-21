@@ -571,7 +571,7 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
           <button
             type="button"
             onClick={() => setSelected(new Set())}
-            className="text-sm text-muted-foreground hover:text-foreground hover:underline"
+            className="cursor-pointer text-sm text-muted-foreground hover:text-foreground hover:underline"
           >
             Clear selection
           </button>

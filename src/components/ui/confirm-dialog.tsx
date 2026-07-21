@@ -4,10 +4,16 @@ import { useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { Button, type ButtonProps } from "@/components/ui/button";
 
-function ConfirmSubmitButton({ confirmLabel }: { confirmLabel: string }) {
+function ConfirmSubmitButton({
+  confirmLabel,
+  variant,
+}: {
+  confirmLabel: string;
+  variant: ButtonProps["variant"];
+}) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" variant="destructive" loading={pending}>
+    <Button type="submit" variant={variant} loading={pending}>
       {pending ? "Working…" : confirmLabel}
     </Button>
   );
@@ -30,6 +36,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel = "Delete",
+  confirmVariant = "destructive",
   action,
 }: {
   triggerContent: React.ReactNode;
@@ -40,6 +47,7 @@ export function ConfirmDialog({
   title: string;
   description: string;
   confirmLabel?: string;
+  confirmVariant?: ButtonProps["variant"];
   action: (formData: FormData) => void | Promise<void>;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -72,7 +80,7 @@ export function ConfirmDialog({
             Cancel
           </Button>
           <form action={action}>
-            <ConfirmSubmitButton confirmLabel={confirmLabel} />
+            <ConfirmSubmitButton confirmLabel={confirmLabel} variant={confirmVariant} />
           </form>
         </div>
       </dialog>

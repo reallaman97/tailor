@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOutAction } from "@/lib/auth/actions";
-import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Logo } from "@/components/logo";
 import { Footer } from "@/components/footer";
@@ -93,11 +93,17 @@ export function AppShell({
         <div className="flex shrink-0 items-center gap-2">
           <span className="hidden max-w-[14rem] truncate text-xs text-muted-foreground md:inline">{userEmail}</span>
           <ThemeToggle />
-          <form action={signOutAction}>
-            <Button type="submit" variant="ghost" size="icon" aria-label="Log out">
-              <LogOutIcon className="size-4" />
-            </Button>
-          </form>
+          <ConfirmDialog
+            title="Log out?"
+            description="You'll need to sign in again to continue."
+            confirmLabel="Log out"
+            confirmVariant="primary"
+            action={signOutAction}
+            triggerVariant="ghost"
+            triggerSize="icon"
+            triggerLabel="Log out"
+            triggerContent={<LogOutIcon className="size-4" />}
+          />
         </div>
       </header>
 

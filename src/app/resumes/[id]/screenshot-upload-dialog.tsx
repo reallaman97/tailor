@@ -50,7 +50,7 @@ export function ScreenshotUploadDialog({
               type="button"
               onClick={() => dialogRef.current?.close()}
               aria-label="Close"
-              className="text-muted-foreground hover:text-foreground"
+              className="cursor-pointer text-muted-foreground hover:text-foreground"
             >
               <XIcon className="size-4" />
             </button>
