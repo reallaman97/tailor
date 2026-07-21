@@ -1,6 +1,17 @@
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 import type { ResumeDocument } from "@/lib/export/build-document";
 import { formatMonthYear, formatOptionalDateRange } from "./format-dates";
+import { WORKING_STYLE_LABEL, WORKING_TYPE_LABEL } from "@/lib/profile/work-history-constants";
+
+function jobMeta(job: ResumeDocument["workHistory"][number]): string {
+  return [
+    job.location,
+    job.workingType ? WORKING_TYPE_LABEL[job.workingType] : null,
+    job.workingStyle ? WORKING_STYLE_LABEL[job.workingStyle] : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
 
 // Same ATS-friendly constraint as the Modern template (single column, no
 // tables/images) — this is a visual variant only, ordering/content is
@@ -73,7 +84,7 @@ export function ClassicResumeTemplate({ data }: { data: ResumeDocument }) {
                 </View>
                 <Text style={styles.entryLine}>
                   {job.company}
-                  {job.location ? `, ${job.location}` : ""}
+                  {jobMeta(job) ? `, ${jobMeta(job)}` : ""}
                 </Text>
                 {job.bullets.map((bullet, j) => (
                   <Text key={j} style={styles.bullet}>

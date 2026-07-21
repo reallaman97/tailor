@@ -31,6 +31,8 @@ describe("work history (integration)", () => {
       company: "Acme",
       jobTitle: "Engineer",
       location: "Remote",
+      workingStyle: "FULL_TIME",
+      workingType: "REMOTE",
       startDate: "2020-01",
       endDate: "2022-06",
       achievements: ["Shipped feature X", "Reduced latency 30%"],
@@ -40,6 +42,8 @@ describe("work history (integration)", () => {
       company: "Globex",
       jobTitle: "Senior Engineer",
       location: undefined,
+      workingStyle: undefined,
+      workingType: undefined,
       startDate: "2022-07",
       endDate: undefined, // current role
       achievements: ["Led migration"],
@@ -52,16 +56,26 @@ describe("work history (integration)", () => {
       company: "Acme",
       jobTitle: "Engineer",
       location: "Remote",
+      workingStyle: "FULL_TIME",
+      workingType: "REMOTE",
       startDate: "2020-01",
       endDate: "2022-06",
       achievements: ["Shipped feature X", "Reduced latency 30%"],
     });
-    expect(list[1]).toMatchObject({ id: id2, company: "Globex", endDate: null });
+    expect(list[1]).toMatchObject({
+      id: id2,
+      company: "Globex",
+      endDate: null,
+      workingStyle: null,
+      workingType: null,
+    });
 
     await updateWorkHistoryEntry(profileId, id1, {
       company: "Acme Corp",
       jobTitle: "Engineer",
       location: "Remote",
+      workingStyle: "CONTRACT",
+      workingType: "HYBRID",
       startDate: "2020-01",
       endDate: "2022-06",
       achievements: ["Updated achievement"],
@@ -70,6 +84,8 @@ describe("work history (integration)", () => {
     const updated = (await listWorkHistory(profileId)).find((e) => e.id === id1);
     expect(updated?.company).toBe("Acme Corp");
     expect(updated?.achievements).toEqual(["Updated achievement"]);
+    expect(updated?.workingStyle).toBe("CONTRACT");
+    expect(updated?.workingType).toBe("HYBRID");
 
     await deleteWorkHistoryEntry(profileId, id1);
     expect((await listWorkHistory(profileId)).map((e) => e.id)).toEqual([id2]);
@@ -82,6 +98,8 @@ describe("work history (integration)", () => {
       company: "Other Co",
       jobTitle: "Engineer",
       location: undefined,
+      workingStyle: undefined,
+      workingType: undefined,
       startDate: "2020-01",
       endDate: undefined,
       achievements: ["Something"],
@@ -92,6 +110,8 @@ describe("work history (integration)", () => {
         company: "Hijacked",
         jobTitle: "Engineer",
         location: undefined,
+        workingStyle: undefined,
+        workingType: undefined,
         startDate: "2020-01",
         endDate: undefined,
         achievements: [],

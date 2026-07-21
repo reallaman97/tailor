@@ -37,10 +37,22 @@ export const personalInfoSchema = z.object({
 
 export type PersonalInfoInput = z.infer<typeof personalInfoSchema>;
 
+const workingStyleOptional = z
+  .union([z.enum(["FULL_TIME", "PART_TIME", "CONTRACT"]), z.literal("")])
+  .optional()
+  .transform((value) => (value ? value : undefined));
+
+const workingTypeOptional = z
+  .union([z.enum(["REMOTE", "HYBRID", "ON_SITE"]), z.literal("")])
+  .optional()
+  .transform((value) => (value ? value : undefined));
+
 export const workHistoryEntrySchema = z.object({
   company: z.string().trim().min(1, "Company is required"),
   jobTitle: z.string().trim().min(1, "Job title is required"),
   location: optionalTrimmed,
+  workingStyle: workingStyleOptional,
+  workingType: workingTypeOptional,
   startDate: z.string().regex(YEAR_MONTH_PATTERN, "Start date is required"),
   endDate: yearMonthOptional, // omitted/empty = current role
   achievements: z

@@ -45,6 +45,8 @@ describe("getResumeFields — the reference-only-data boundary (integration)", (
       company: "Acme",
       jobTitle: "Engineer",
       location: undefined,
+      workingStyle: undefined,
+      workingType: undefined,
       startDate: "2020-01",
       endDate: undefined,
       achievements: ["Shipped feature X"],

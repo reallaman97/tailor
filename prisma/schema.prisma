@@ -100,14 +100,28 @@ model Profile {
   resumes     Resume[]
 }
 
+enum WorkingStyle {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+}
+
+enum WorkingType {
+  REMOTE
+  HYBRID
+  ON_SITE
+}
+
 model WorkHistoryEntry {
   id        String  @id @default(cuid())
   profileId String
   profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
-  company   String // plaintext — low sensitivity, needed for sorting/search
-  jobTitle  String
-  location  String?
+  company     String // plaintext — low sensitivity, needed for sorting/search
+  jobTitle    String
+  location    String?
+  workingStyle WorkingStyle? // Full-time / Part-time / Contract — unset for older entries
+  workingType  WorkingType?  // Remote / Hybrid / On-site — unset for older entries
   startDate DateTime
   endDate   DateTime? // null = current role
   sortOrder Int       @default(0)

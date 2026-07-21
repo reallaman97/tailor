@@ -3,6 +3,7 @@ import { getProfileDek } from "@/lib/profile/dek";
 import { encryptJson, decryptJson } from "@/lib/profile/crypto";
 import { toDateOnly, fromDateOnly } from "@/lib/profile/date-utils";
 import type { WorkHistoryEntryInput } from "@/lib/profile/schemas";
+import type { WorkingStyle, WorkingType } from "@/generated/prisma/client";
 
 export class EntryNotFoundError extends Error {
   constructor() {
@@ -15,6 +16,8 @@ export type DecryptedWorkHistoryEntry = {
   company: string;
   jobTitle: string;
   location: string | null;
+  workingStyle: WorkingStyle | null;
+  workingType: WorkingType | null;
   startDate: string;
   endDate: string | null; // null = current role
   achievements: string[];
@@ -33,6 +36,8 @@ export async function listWorkHistory(profileId: string): Promise<DecryptedWorkH
     company: entry.company,
     jobTitle: entry.jobTitle,
     location: entry.location,
+    workingStyle: entry.workingStyle,
+    workingType: entry.workingType,
     startDate: toDateOnly(entry.startDate),
     endDate: entry.endDate ? toDateOnly(entry.endDate) : null,
     achievements: decryptJson<string[]>(dek, entry.achievementsEnc),
@@ -52,6 +57,8 @@ export async function createWorkHistoryEntry(
       company: input.company,
       jobTitle: input.jobTitle,
       location: input.location ?? null,
+      workingStyle: input.workingStyle ?? null,
+      workingType: input.workingType ?? null,
       startDate: fromDateOnly(input.startDate),
       endDate: input.endDate ? fromDateOnly(input.endDate) : null,
       achievementsEnc: encryptJson(dek, input.achievements),
@@ -75,6 +82,8 @@ export async function updateWorkHistoryEntry(
       company: input.company,
       jobTitle: input.jobTitle,
       location: input.location ?? null,
+      workingStyle: input.workingStyle ?? null,
+      workingType: input.workingType ?? null,
       startDate: fromDateOnly(input.startDate),
       endDate: input.endDate ? fromDateOnly(input.endDate) : null,
       achievementsEnc: encryptJson(dek, input.achievements),

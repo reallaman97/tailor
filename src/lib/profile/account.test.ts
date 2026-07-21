@@ -33,6 +33,8 @@ describe("account deletion (integration)", () => {
       company: "Acme",
       jobTitle: "Engineer",
       location: undefined,
+      workingStyle: undefined,
+      workingType: undefined,
       startDate: "2020-01",
       endDate: undefined,
       achievements: ["Did things"],

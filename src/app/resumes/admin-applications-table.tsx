@@ -113,6 +113,33 @@ function DateFilter({ value, onChange }: { value: string; onChange: (v: string) 
   );
 }
 
+export type DateRange = { from: string; to: string };
+
+function DateRangeFilter({ value, onChange }: { value: DateRange; onChange: (v: DateRange) => void }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <input
+        type="date"
+        value={value.from}
+        onChange={(e) => onChange({ ...value, from: e.target.value })}
+        onClick={(e) => e.stopPropagation()}
+        aria-label="From"
+        title="From"
+        className="h-7 w-full rounded border border-input bg-transparent px-1 text-xs text-foreground"
+      />
+      <input
+        type="date"
+        value={value.to}
+        onChange={(e) => onChange({ ...value, to: e.target.value })}
+        onClick={(e) => e.stopPropagation()}
+        aria-label="To"
+        title="To"
+        className="h-7 w-full rounded border border-input bg-transparent px-1 text-xs text-foreground"
+      />
+    </div>
+  );
+}
+
 export function AdminApplicationsTable({ applications }: { applications: AdminTrackerRow[] }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkStatus, setBulkStatus] = useState<ResumeStatus>("APPLIED");
@@ -313,7 +340,14 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
           const v = getValue<Date | null>();
           return <span className="text-muted-foreground">{v ? v.toLocaleDateString() : "—"}</span>;
         },
-        filterFn: (row, id, value: string) => value === "" || toDateInputValue(row.original.appliedAt) === value,
+        filterFn: (row, id, value: DateRange | undefined) => {
+          if (!value?.from && !value?.to) return true;
+          const applied = toDateInputValue(row.original.appliedAt);
+          if (!applied) return false;
+          if (value.from && applied < value.from) return false;
+          if (value.to && applied > value.to) return false;
+          return true;
+        },
       },
       {
         id: "approvalStatus",
@@ -484,9 +518,9 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
       />
     ),
     appliedAt: (
-      <DateFilter
-        value={(table.getColumn("appliedAt")?.getFilterValue() as string) ?? ""}
-        onChange={(v) => table.getColumn("appliedAt")?.setFilterValue(v)}
+      <DateRangeFilter
+        value={(table.getColumn("appliedAt")?.getFilterValue() as DateRange) ?? { from: "", to: "" }}
+        onChange={(v) => table.getColumn("appliedAt")?.setFilterValue(v.from || v.to ? v : undefined)}
       />
     ),
     approvalStatus: (

@@ -3,6 +3,7 @@ import { getPersonalInfo } from "@/lib/profile/personal-info";
 import { listWorkHistory } from "@/lib/profile/work-history";
 import { listEducation } from "@/lib/profile/education";
 import { listSkillGroups } from "@/lib/profile/skills";
+import type { WorkingStyle, WorkingType } from "@/generated/prisma/client";
 
 export type ResumeFields = {
   fullName: string;
@@ -17,6 +18,8 @@ export type ResumeFields = {
     company: string;
     jobTitle: string;
     location: string | null;
+    workingStyle: WorkingStyle | null;
+    workingType: WorkingType | null;
     startDate: string;
     endDate: string | null;
     achievements: string[];
@@ -70,6 +73,8 @@ export async function getResumeFields(userId: string): Promise<ResumeFields | nu
       company: w.company,
       jobTitle: w.jobTitle,
       location: w.location,
+      workingStyle: w.workingStyle,
+      workingType: w.workingType,
       startDate: w.startDate,
       endDate: w.endDate,
       achievements: w.achievements,

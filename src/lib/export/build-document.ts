@@ -13,6 +13,8 @@ export type ResumeDocument = {
     company: string;
     jobTitle: string;
     location: string | null;
+    workingStyle: ResumeFields["workHistory"][number]["workingStyle"];
+    workingType: ResumeFields["workHistory"][number]["workingType"];
     startDate: string;
     endDate: string | null;
     bullets: string[];
@@ -68,6 +70,8 @@ export function buildResumeDocument(
       company: entry.company,
       jobTitle: entry.jobTitle,
       location: entry.location,
+      workingStyle: entry.workingStyle,
+      workingType: entry.workingType,
       startDate: entry.startDate,
       endDate: entry.endDate,
       bullets: tailoredBulletsByEntryId.get(entry.id) ?? entry.achievements,

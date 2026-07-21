@@ -7,9 +7,11 @@ import {
   deleteWorkHistoryAction,
 } from "./actions";
 import type { DecryptedWorkHistoryEntry } from "@/lib/profile/work-history";
+import { WORKING_STYLE_OPTIONS, WORKING_TYPE_OPTIONS } from "@/lib/profile/work-history-constants";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
@@ -45,6 +47,28 @@ function WorkHistoryEntryForm({
           <FormField label="Location" htmlFor={`${formId}-location`}>
             <Input id={`${formId}-location`} name="location" defaultValue={entry?.location ?? ""} />
           </FormField>
+          <div className="grid grid-cols-2 gap-3">
+            <FormField label="Working style" htmlFor={`${formId}-workingStyle`}>
+              <Select id={`${formId}-workingStyle`} name="workingStyle" defaultValue={entry?.workingStyle ?? ""}>
+                <option value="">Not specified</option>
+                {WORKING_STYLE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+            <FormField label="Working type" htmlFor={`${formId}-workingType`}>
+              <Select id={`${formId}-workingType`} name="workingType" defaultValue={entry?.workingType ?? ""}>
+                <option value="">Not specified</option>
+                {WORKING_TYPE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </Select>
+            </FormField>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <FormField label="Start date" htmlFor={`${formId}-startDate`}>
               <Input

@@ -1,6 +1,17 @@
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 import type { ResumeDocument } from "@/lib/export/build-document";
 import { formatMonthYear, formatOptionalDateRange } from "./format-dates";
+import { WORKING_STYLE_LABEL, WORKING_TYPE_LABEL } from "@/lib/profile/work-history-constants";
+
+function jobMeta(job: ResumeDocument["workHistory"][number]): string {
+  return [
+    job.location,
+    job.workingType ? WORKING_TYPE_LABEL[job.workingType] : null,
+    job.workingStyle ? WORKING_STYLE_LABEL[job.workingStyle] : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 // ATS-friendly by construction: single column, no tables, no images, no
 // side-by-side text (PDF text extraction follows draw order, not visual
@@ -54,7 +65,7 @@ export function ModernResumeTemplate({ data }: { data: ResumeDocument }) {
                 <Text style={styles.entryTitle}>{job.jobTitle}</Text>
                 <Text style={styles.entryLine}>
                   {job.company}
-                  {job.location ? ` — ${job.location}` : ""}
+                  {jobMeta(job) ? ` — ${jobMeta(job)}` : ""}
                 </Text>
                 <Text style={styles.entryLine}>
                   {formatMonthYear(job.startDate)} - {formatMonthYear(job.endDate)}
