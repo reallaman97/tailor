@@ -33,7 +33,8 @@ export function RoleSelect({
           });
         }}
       >
-        <option value="USER">User</option>
+        <option value="BIDDER">Bidder</option>
+        <option value="CALLER">Caller</option>
         <option value="SUPERADMIN">Superadmin</option>
       </Select>
       {error && <p className="text-xs text-destructive">{error}</p>}

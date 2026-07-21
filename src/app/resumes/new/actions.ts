@@ -1,7 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { requireUser } from "@/lib/auth/require-user";
+import { requireResumePlatformAccess } from "@/lib/auth/require-user";
 import { createResumeSchema } from "@/lib/resumes/schemas";
 import { createResume, DuplicateApplicationError } from "@/lib/resumes/resumes";
 import { classifyRoleTrack } from "@/lib/resumes/classify-role-track";
@@ -17,7 +17,7 @@ export async function createResumeAction(
   _prevState: NewResumeState,
   formData: FormData
 ): Promise<NewResumeState> {
-  const user = await requireUser();
+  const user = await requireResumePlatformAccess();
 
   const parsed = createResumeSchema.safeParse({
     jobLink: formData.get("jobLink"),
@@ -45,5 +45,5 @@ export async function createResumeAction(
     throw err;
   }
 
-  redirect(`/resumes/${resumeId}`);
+  redirect(`/resumes/${resumeId}?upload=1`);
 }

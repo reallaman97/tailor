@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireUser, requireSuperAdmin } from "@/lib/auth/require-user";
+import { requireResumePlatformAccess, requireSuperAdmin } from "@/lib/auth/require-user";
 import { tailorResume, ProfileIncompleteError } from "@/lib/tailoring/tailor-resume";
 import { ResumeNotFoundError, InvalidScreenshotError, uploadScreenshot } from "@/lib/resumes/resumes";
 import { updateApplicationDetails } from "@/lib/admin/applications";
@@ -15,7 +15,7 @@ export async function generateTailoredResumeAction(
   _prevState: GenerateState,
   _formData: FormData
 ): Promise<GenerateState> {
-  const user = await requireUser();
+  const user = await requireResumePlatformAccess();
 
   try {
     await tailorResume(user.id, resumeId);
@@ -67,7 +67,7 @@ export async function uploadScreenshotAction(
   _prevState: ScreenshotActionState,
   formData: FormData
 ): Promise<ScreenshotActionState> {
-  const user = await requireUser();
+  const user = await requireResumePlatformAccess();
 
   const file = formData.get("screenshot");
   if (!(file instanceof File) || file.size === 0) {

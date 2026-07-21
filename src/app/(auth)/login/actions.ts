@@ -20,7 +20,7 @@ export async function loginAction(_prevState: LoginState, formData: FormData): P
     await signIn("credentials", {
       email: parsed.data.email,
       password: parsed.data.password,
-      redirectTo: "/resumes",
+      redirectTo: "/",
     });
   } catch (err) {
     if (err instanceof AccountPendingApprovalError) {

@@ -13,8 +13,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Resume Tailor",
-  description: "Build your profile once, tailor a resume for every job.",
+  title: "Cute Job Platform",
+  description: "Your toolkit for the job hunt — resume tailoring, and more tools on the way.",
+  authors: [{ name: "Alpus Consulting LLC" }],
+  applicationName: "Cute Job Platform",
 };
 
 // Runs before paint so the correct theme applies with zero flash — a normal

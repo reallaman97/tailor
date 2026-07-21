@@ -13,8 +13,9 @@ datasource db {
 // ── Auth ──────────────────────────────────────────────
 
 enum UserRole {
-  USER
   SUPERADMIN
+  BIDDER
+  CALLER
 }
 
 model User {
@@ -22,7 +23,7 @@ model User {
   email         String    @unique // login credential — separate from Profile.contactEmail
   passwordHash  String
   emailVerified DateTime?
-  role          UserRole  @default(USER)
+  role          UserRole  @default(BIDDER)
   // New sign-ups start unapproved and cannot log in until a superadmin
   // flips this — see AccountPendingApprovalError in src/auth.ts.
   approved      Boolean   @default(false)

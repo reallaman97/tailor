@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { requireUser } from "@/lib/auth/require-user";
+import { requireResumePlatformAccess } from "@/lib/auth/require-user";
 import { getAssignedProfileId } from "@/lib/profile/shared";
 import { getPersonalInfo } from "@/lib/profile/personal-info";
 import { listWorkHistory } from "@/lib/profile/work-history";
@@ -22,7 +22,7 @@ function Field({ label, value }: { label: string; value: string | null }) {
 }
 
 export default async function ProfilePage() {
-  const user = await requireUser();
+  const user = await requireResumePlatformAccess();
   // Superadmin manages every profile from /admin/profiles instead of having
   // their own personal "assigned profile" view.
   if (user.role === "SUPERADMIN") redirect("/admin/profiles");

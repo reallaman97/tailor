@@ -1,5 +1,7 @@
 import { requireSuperAdmin } from "@/lib/auth/require-user";
 import { getDashboardAnalytics } from "@/lib/resumes/analytics";
+import { listAllProfiles } from "@/lib/admin/profiles";
+import { ProfileFilter } from "./profile-filter";
 import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -27,18 +29,43 @@ function weekLabel(weekStart: string): string {
   return `${d.getUTCMonth() + 1}/${d.getUTCDate()}`;
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ profile?: string }>;
+}) {
   const admin = await requireSuperAdmin();
-  const { overview, byRoleTrack, bySource, today, weekly } = await getDashboardAnalytics();
+  const { profile: requestedProfileId } = await searchParams;
+
+  const profiles = await listAllProfiles();
+  const selectedProfile = requestedProfileId ? profiles.find((p) => p.id === requestedProfileId) : undefined;
+  const selectedProfileId = selectedProfile?.id;
+
+  const { overview, byProfile, byRoleTrack, bySource, today, weekly } = await getDashboardAnalytics({
+    profileId: selectedProfileId,
+  });
   const weekLabels = weekly.map((w) => weekLabel(w.weekStart));
 
   return (
     <AppShell userEmail={admin.email} isSuperAdmin>
       <div className="flex flex-col gap-6">
-        <PageHeader
-          title="Dashboard"
-          description="Every user's job search, at a glance — numbers update automatically as applications are tracked."
-        />
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <PageHeader
+            title="Dashboard"
+            description={
+              selectedProfile
+                ? `${selectedProfile.fullName ?? "Untitled profile"}'s job search, at a glance — numbers update automatically as applications are tracked.`
+                : "Every profile's job search, at a glance — numbers update automatically as applications are tracked."
+            }
+          />
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground">Profile</label>
+            <ProfileFilter
+              profiles={profiles.map((p) => ({ id: p.id, fullName: p.fullName }))}
+              selectedProfileId={selectedProfileId}
+            />
+          </div>
+        </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-2">
@@ -69,6 +96,62 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+
+        {!selectedProfile && (
+          <Card>
+            <CardHeader>
+              <CardTitle>By profile</CardTitle>
+              <CardDescription>
+                Every tracked candidate&apos;s job search, broken out individually — pick one above to see its full
+                dashboard.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Profile</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Awaiting response</TableHead>
+                    <TableHead>Positive</TableHead>
+                    <TableHead>Rejected</TableHead>
+                    <TableHead>Pending</TableHead>
+                    <TableHead>Positive %</TableHead>
+                    <TableHead>Needs follow-up</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {byProfile.map((row) => (
+                    <TableRow key={row.profileId ?? "__none__"}>
+                      <TableCell className="font-medium text-foreground">
+                        {row.profileId ? (
+                          <a href={`/dashboard?profile=${row.profileId}`} className="hover:text-primary hover:underline">
+                            {row.profileName ?? "Untitled profile"}
+                          </a>
+                        ) : (
+                          "No profile assigned"
+                        )}
+                      </TableCell>
+                      <TableCell>{row.total}</TableCell>
+                      <TableCell>{row.awaitingResponse}</TableCell>
+                      <TableCell>{row.positiveResponses}</TableCell>
+                      <TableCell>{row.rejected}</TableCell>
+                      <TableCell>{row.pending}</TableCell>
+                      <TableCell>{pct(row.positiveRate)}</TableCell>
+                      <TableCell>
+                        {row.needsFollowUp > 0 ? (
+                          <span className="font-medium text-warning">{row.needsFollowUp}</span>
+                        ) : (
+                          row.needsFollowUp
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

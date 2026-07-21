@@ -22,6 +22,7 @@ import {
   bulkDeleteResumesAction,
   deleteResumeAction,
 } from "./actions";
+import { usePersistedState } from "@/lib/use-persisted-state";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -118,9 +119,15 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
   const [pending, startTransition] = useTransition();
   const [approvalPending, startApprovalTransition] = useTransition();
 
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
+  const [sorting, setSorting] = usePersistedState<SortingState>("admin-applications-table:sorting", []);
+  const [columnFilters, setColumnFilters] = usePersistedState<ColumnFiltersState>(
+    "admin-applications-table:columnFilters",
+    []
+  );
+  const [columnSizing, setColumnSizing] = usePersistedState<ColumnSizingState>(
+    "admin-applications-table:columnSizing",
+    {}
+  );
 
   function toggleOne(id: string) {
     setSelected((prev) => {
@@ -151,10 +158,10 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
     [...selected].forEach((id, i) => {
       setTimeout(() => {
         const jd = document.createElement("a");
-        jd.href = `/resumes/${id}/job-description`;
+        jd.href = `/api/resumes/${id}/job-description`;
         jd.click();
         const pdf = document.createElement("a");
-        pdf.href = `/resumes/${id}/pdf`;
+        pdf.href = `/api/resumes/${id}/pdf`;
         pdf.click();
       }, i * 400);
     });
@@ -358,7 +365,7 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
               View
             </Link>
             <a
-              href={`/resumes/${row.original.id}/job-description`}
+              href={`/api/resumes/${row.original.id}/job-description`}
               className={buttonVariants("ghost", "icon")}
               aria-label="Download job description"
               title="Download job description"
@@ -366,7 +373,7 @@ export function AdminApplicationsTable({ applications }: { applications: AdminTr
               <DownloadIcon className="size-4" />
             </a>
             <a
-              href={`/resumes/${row.original.id}/pdf`}
+              href={`/api/resumes/${row.original.id}/pdf`}
               className={buttonVariants("ghost", "icon")}
               aria-label="Download generated resume"
               title="Download generated resume"

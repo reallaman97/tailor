@@ -9,11 +9,12 @@ import { classifyRoleTrack } from "@/lib/resumes/classify-role-track";
 import type { NewResumeState } from "./actions";
 
 /**
- * A superadmin building on behalf of another user: they pick which user
- * (and therefore which assigned profile) to tailor for, and choose the
- * source explicitly rather than it defaulting to Job Board. The resulting
- * application is created under the SELECTED user's account, so it shows up
- * in their tracker, not the superadmin's own.
+ * A superadmin building on behalf of a candidate: they pick which profile to
+ * tailor for (not a specific user account — several accounts can share one
+ * profile), and choose the source explicitly rather than it defaulting to
+ * Job Board. The resulting application is attributed to that profile's
+ * earliest-registered assigned account, so it shows up in the shared
+ * tracker rather than the superadmin's own.
  */
 export async function createResumeAsAdminAction(
   _prevState: NewResumeState,
@@ -21,9 +22,9 @@ export async function createResumeAsAdminAction(
 ): Promise<NewResumeState> {
   await requireSuperAdmin();
 
-  const targetUserId = formData.get("targetUserId");
-  if (typeof targetUserId !== "string" || targetUserId.trim() === "") {
-    return { error: "Select a user to build this resume for" };
+  const profileId = formData.get("profileId");
+  if (typeof profileId !== "string" || profileId.trim() === "") {
+    return { error: "Select a profile to build this resume for" };
   }
 
   const sourceParsed = applicationSourceSchema.safeParse(formData.get("source"));
@@ -41,9 +42,13 @@ export async function createResumeAsAdminAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  const targetUser = await db.user.findUnique({ where: { id: targetUserId }, select: { id: true } });
+  const targetUser = await db.user.findFirst({
+    where: { profileId },
+    orderBy: { email: "asc" },
+    select: { id: true },
+  });
   if (!targetUser) {
-    return { error: "Selected user not found" };
+    return { error: "That profile has no assigned account to build for" };
   }
 
   const roleTrack = await classifyRoleTrack(parsed.data.jobTitle, parsed.data.jobDescription);

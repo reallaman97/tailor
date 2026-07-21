@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -20,6 +20,7 @@ import { Select } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TrashIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
+import { usePersistedState } from "@/lib/use-persisted-state";
 import type { AdminUserSummary } from "@/lib/admin/users";
 
 function toDateInputValue(date: Date): string {
@@ -79,9 +80,15 @@ export function UsersTable({
   adminId: string;
   profiles: Array<{ id: string; fullName: string | null }>;
 }) {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
+  const [sorting, setSorting] = usePersistedState<SortingState>("admin-users-table:sorting", []);
+  const [columnFilters, setColumnFilters] = usePersistedState<ColumnFiltersState>(
+    "admin-users-table:columnFilters",
+    []
+  );
+  const [columnSizing, setColumnSizing] = usePersistedState<ColumnSizingState>(
+    "admin-users-table:columnSizing",
+    {}
+  );
 
   const columns = useMemo<ColumnDef<AdminUserSummary>[]>(
     () => [
@@ -222,7 +229,8 @@ export function UsersTable({
         value={(table.getColumn("role")?.getFilterValue() as string) ?? ""}
         onChange={(v) => table.getColumn("role")?.setFilterValue(v || undefined)}
         options={[
-          { value: "USER", label: "User" },
+          { value: "BIDDER", label: "Bidder" },
+          { value: "CALLER", label: "Caller" },
           { value: "SUPERADMIN", label: "Superadmin" },
         ]}
       />

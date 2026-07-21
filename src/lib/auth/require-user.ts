@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
+import { TOOLS, canAccessTool } from "@/lib/tools";
 
-export type Role = "USER" | "SUPERADMIN";
+export type Role = "SUPERADMIN" | "BIDDER" | "CALLER";
 
 /**
  * The real auth boundary. Call this at the top of every server action, route
@@ -11,7 +12,8 @@ export type Role = "USER" | "SUPERADMIN";
  *
  * `role` here comes from the session/JWT — fine for cheap UI decisions (e.g.
  * showing the admin nav link), but never for gating an admin action. Use
- * requireSuperAdmin() for that, which re-checks the database directly.
+ * requireSuperAdmin() or requireResumePlatformAccess() for that, which
+ * re-check the database.
  */
 export async function requireUser(): Promise<{ id: string; email: string; role: Role }> {
   const session = await auth();
@@ -35,7 +37,26 @@ export async function requireSuperAdmin(): Promise<{ id: string; email: string }
   const user = await requireUser();
   const fresh = await db.user.findUniqueOrThrow({ where: { id: user.id }, select: { role: true } });
   if (fresh.role !== "SUPERADMIN") {
-    redirect("/resumes");
+    redirect("/");
   }
   return { id: user.id, email: user.email };
+}
+
+/**
+ * The authorization boundary for every Resume Platform page/action — not
+ * every role can use this tool (e.g. a Caller cannot), so this re-checks the
+ * role fresh from the database, same reasoning as requireSuperAdmin(), and
+ * sends anyone without access back to the platform hub to pick a tool they
+ * actually have.
+ */
+export async function requireResumePlatformAccess(): Promise<{ id: string; email: string; role: Role }> {
+  const user = await requireUser();
+  const fresh = await db.user.findUniqueOrThrow({ where: { id: user.id }, select: { role: true } });
+
+  const resumePlatform = TOOLS.find((tool) => tool.key === "resume-platform")!;
+  if (!canAccessTool(fresh.role, resumePlatform)) {
+    redirect("/");
+  }
+
+  return { id: user.id, email: user.email, role: fresh.role };
 }

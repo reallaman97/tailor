@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { getProfileNames } from "@/lib/profile/personal-info";
 import {
   POSITIVE_STATUSES,
   INTERVIEW_STATUSES,
@@ -44,6 +45,18 @@ export type SourceRow = {
   positiveRate: number; // 0-100
 };
 
+export type ProfileRow = {
+  profileId: string | null;
+  profileName: string | null;
+  total: number;
+  awaitingResponse: number;
+  positiveResponses: number;
+  rejected: number;
+  pending: number;
+  positiveRate: number; // 0-100
+  needsFollowUp: number;
+};
+
 /**
  * The trend/today views collapse everything into 3 simplified categories:
  * Positive responses (Reply/Offer), Scheduled (an interview stage reached),
@@ -60,6 +73,7 @@ export type WeeklyPoint = TrendCounts & { weekStart: string };
 
 export type DashboardAnalytics = {
   overview: OverviewStats;
+  byProfile: ProfileRow[];
   byRoleTrack: RoleTrackRow[];
   bySource: SourceRow[];
   today: TrendCounts;
@@ -87,15 +101,26 @@ function classifyTrend(status: ResumeStatus): keyof TrendCounts | null {
   return null;
 }
 
-/** Superadmin-only aggregate — rolls up every user's applications combined, not scoped to one account. */
-export async function getDashboardAnalytics(): Promise<DashboardAnalytics> {
+export type DashboardAnalyticsFilter = {
+  /** Scopes every section of the dashboard to one candidate profile. Omitted (or undefined) means every profile combined. */
+  profileId?: string;
+};
+
+/**
+ * Superadmin-only aggregate. With no filter, rolls up every profile's
+ * applications combined; passing `profileId` scopes every section (overview,
+ * today, role-track/source breakdowns, trend) to that one candidate.
+ */
+export async function getDashboardAnalytics(filter: DashboardAnalyticsFilter = {}): Promise<DashboardAnalytics> {
   const resumes = await db.resume.findMany({
+    where: filter.profileId ? { profileId: filter.profileId } : {},
     select: {
       statuses: true,
       roleTrack: true,
       source: true,
       updatedAt: true,
       followUpDate: true,
+      profileId: true,
     },
   });
 
@@ -115,6 +140,16 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalytics> {
 
   const roleTrackTotals = new Map(ROLE_TRACK_OPTIONS.map((o) => [o.value, { applied: 0, positive: 0, rejected: 0, pending: 0 }]));
   const sourceTotals = new Map(SOURCE_OPTIONS.map((o) => [o.value, { applied: 0, positive: 0 }]));
+
+  type ProfileBucket = {
+    total: number;
+    awaitingResponse: number;
+    positiveResponses: number;
+    rejected: number;
+    pending: number;
+    needsFollowUp: number;
+  };
+  const profileTotals = new Map<string | null, ProfileBucket>();
 
   const currentWeekStart = startOfWeek(now);
   const weekStarts: Date[] = Array.from({ length: WEEKS_SHOWN }, (_, i) => {
@@ -148,11 +183,29 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalytics> {
     if (isFailed) overview.failed++;
     if (isGhosted) overview.ghosted++;
 
-    if (isOpen) {
-      const daysSinceUpdate = Math.floor((now.getTime() - r.updatedAt.getTime()) / 86_400_000);
-      const followUpDue = r.followUpDate ? dateOnly(r.followUpDate) <= today : false;
-      if (daysSinceUpdate >= FOLLOW_UP_AFTER_DAYS || followUpDue) overview.needsFollowUpToday++;
+    const needsFollowUp =
+      isOpen &&
+      (Math.floor((now.getTime() - r.updatedAt.getTime()) / 86_400_000) >= FOLLOW_UP_AFTER_DAYS ||
+        (r.followUpDate ? dateOnly(r.followUpDate) <= today : false));
+    if (needsFollowUp) overview.needsFollowUpToday++;
+
+    if (!profileTotals.has(r.profileId)) {
+      profileTotals.set(r.profileId, {
+        total: 0,
+        awaitingResponse: 0,
+        positiveResponses: 0,
+        rejected: 0,
+        pending: 0,
+        needsFollowUp: 0,
+      });
     }
+    const profileBucket = profileTotals.get(r.profileId)!;
+    profileBucket.total++;
+    if (status === "DRAFT" || status === "APPLIED") profileBucket.awaitingResponse++;
+    if (isPositive) profileBucket.positiveResponses++;
+    if (isRejected || isFailed || isGhosted) profileBucket.rejected++;
+    if (isOpen) profileBucket.pending++;
+    if (needsFollowUp) profileBucket.needsFollowUp++;
 
     const roleBucket = roleTrackTotals.get(r.roleTrack)!;
     roleBucket.applied++;
@@ -174,6 +227,29 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalytics> {
   }
 
   overview.positiveResponseRate = overview.total > 0 ? (overview.positiveResponses / overview.total) * 100 : 0;
+
+  const profileIds = [...profileTotals.keys()].filter((id): id is string => id !== null);
+  const namesByProfileId = await getProfileNames(profileIds);
+
+  const byProfile: ProfileRow[] = [...profileTotals.entries()]
+    .map(([profileId, b]) => ({
+      profileId,
+      profileName: profileId ? (namesByProfileId.get(profileId) ?? null) : null,
+      total: b.total,
+      awaitingResponse: b.awaitingResponse,
+      positiveResponses: b.positiveResponses,
+      rejected: b.rejected,
+      pending: b.pending,
+      positiveRate: b.total > 0 ? (b.positiveResponses / b.total) * 100 : 0,
+      needsFollowUp: b.needsFollowUp,
+    }))
+    // Unassigned-profile applications (profileId null) always sort last, since
+    // they're a catch-all rather than a real candidate to track individually.
+    .sort((a, b) => {
+      if (a.profileId === null) return 1;
+      if (b.profileId === null) return -1;
+      return b.total - a.total || (a.profileName ?? "").localeCompare(b.profileName ?? "");
+    });
 
   const byRoleTrack: RoleTrackRow[] = ROLE_TRACK_OPTIONS.map((opt) => {
     const b = roleTrackTotals.get(opt.value)!;
@@ -197,5 +273,5 @@ export async function getDashboardAnalytics(): Promise<DashboardAnalytics> {
     };
   });
 
-  return { overview, byRoleTrack, bySource, today: todayTrend, weekly };
+  return { overview, byProfile, byRoleTrack, bySource, today: todayTrend, weekly };
 }

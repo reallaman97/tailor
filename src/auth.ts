@@ -72,7 +72,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // action re-checks the role fresh from the database; a role change
         // takes effect there immediately even though this claim is stale
         // until the next login.
-        session.user.role = token.role as "USER" | "SUPERADMIN";
+        session.user.role = token.role as "SUPERADMIN" | "BIDDER" | "CALLER";
       }
       return session;
     },

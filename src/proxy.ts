@@ -1,13 +1,16 @@
 import { auth } from "@/auth";
 
 const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/resumes", "/admin"];
+const RESUME_PLATFORM_ROLES = new Set(["SUPERADMIN", "BIDDER"]);
 
 // UX convenience only — redirects logged-out visitors away from protected
-// pages, and non-admins away from /admin. This is NOT the security boundary:
-// Server Actions are not covered by this matcher, and the role claim here
-// comes from the JWT (can be briefly stale after a role change). Every
-// server action/route handler must call requireUser()/requireSuperAdmin()
-// itself, which re-checks the database. See src/lib/auth/require-user.ts.
+// pages, non-admins away from /admin, and roles without Resume Platform
+// access away from it. This is NOT the security boundary: Server Actions
+// are not covered by this matcher, and the role claim here comes from the
+// JWT (can be briefly stale after a role change). Every server
+// action/route handler must call requireUser()/requireSuperAdmin()/
+// requireResumePlatformAccess() itself, which re-checks the database. See
+// src/lib/auth/require-user.ts.
 export default auth((req) => {
   const isLoggedIn = !!req.auth;
   const isProtected = PROTECTED_PREFIXES.some((prefix) =>
@@ -23,7 +26,15 @@ export default auth((req) => {
     (req.nextUrl.pathname.startsWith("/admin") || req.nextUrl.pathname.startsWith("/dashboard")) &&
     req.auth?.user?.role !== "SUPERADMIN"
   ) {
-    return Response.redirect(new URL("/resumes", req.nextUrl));
+    return Response.redirect(new URL("/", req.nextUrl));
+  }
+
+  if (
+    (req.nextUrl.pathname.startsWith("/resumes") || req.nextUrl.pathname.startsWith("/profile")) &&
+    req.auth?.user?.role &&
+    !RESUME_PLATFORM_ROLES.has(req.auth.user.role)
+  ) {
+    return Response.redirect(new URL("/", req.nextUrl));
   }
 });
 

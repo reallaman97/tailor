@@ -2,7 +2,7 @@ import { requireSuperAdmin } from "@/lib/auth/require-user";
 import { listAllUsers } from "@/lib/admin/users";
 import { listAllProfiles } from "@/lib/admin/profiles";
 import { UsersTable } from "./users-table";
-import { AppShell } from "@/components/app-shell";
+import { AdminShell } from "@/components/admin-shell";
 import { PageHeader } from "@/components/page-header";
 
 export default async function AdminUsersPage() {
@@ -10,7 +10,7 @@ export default async function AdminUsersPage() {
   const [users, profiles] = await Promise.all([listAllUsers(), listAllProfiles()]);
 
   return (
-    <AppShell userEmail={admin.email} isSuperAdmin wide>
+    <AdminShell userEmail={admin.email}>
       <div className="flex flex-col gap-6">
         <PageHeader
           title="Users"
@@ -23,6 +23,6 @@ export default async function AdminUsersPage() {
           profiles={profiles.map((p) => ({ id: p.id, fullName: p.fullName }))}
         />
       </div>
-    </AppShell>
+    </AdminShell>
   );
 }

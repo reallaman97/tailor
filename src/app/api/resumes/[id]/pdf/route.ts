@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth/require-user";
+import { requireResumePlatformAccess } from "@/lib/auth/require-user";
 import { db } from "@/lib/db";
 import { getResume } from "@/lib/resumes/resumes";
 import { getApplicationDetail } from "@/lib/admin/applications";
@@ -15,7 +15,7 @@ function sanitizeFilenamePart(value: string): string {
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requireUser();
+  const user = await requireResumePlatformAccess();
 
   let resume = await getResume(user.id, id);
   let ownerUserId = user.id;

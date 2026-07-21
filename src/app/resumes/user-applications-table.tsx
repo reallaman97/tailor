@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import {
   useReactTable,
@@ -20,6 +19,7 @@ import { Select } from "@/components/ui/select";
 import { ExternalLinkIcon, DownloadIcon, FileTextIcon } from "@/components/icons";
 import { STATUS_OPTIONS, getPrimaryStatus } from "@/lib/resume-status";
 import { cn } from "@/lib/utils";
+import { usePersistedState } from "@/lib/use-persisted-state";
 import type { ResumeSummary } from "@/lib/resumes/resumes";
 
 function toDateInputValue(date: Date | null): string {
@@ -77,9 +77,15 @@ const APPROVAL_FILTER_OPTIONS = [
 ];
 
 export function UserApplicationsTable({ resumes }: { resumes: ResumeSummary[] }) {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
-  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
+  const [sorting, setSorting] = usePersistedState<SortingState>("user-applications-table:sorting", []);
+  const [columnFilters, setColumnFilters] = usePersistedState<ColumnFiltersState>(
+    "user-applications-table:columnFilters",
+    []
+  );
+  const [columnSizing, setColumnSizing] = usePersistedState<ColumnSizingState>(
+    "user-applications-table:columnSizing",
+    {}
+  );
 
   const columns: ColumnDef<ResumeSummary>[] = [
     {
@@ -177,7 +183,7 @@ export function UserApplicationsTable({ resumes }: { resumes: ResumeSummary[] })
             View
           </Link>
           <a
-            href={`/resumes/${row.original.id}/job-description`}
+            href={`/api/resumes/${row.original.id}/job-description`}
             className={buttonVariants("ghost", "icon")}
             aria-label="Download job description"
             title="Download job description"
@@ -185,7 +191,7 @@ export function UserApplicationsTable({ resumes }: { resumes: ResumeSummary[] })
             <DownloadIcon className="size-4" />
           </a>
           <a
-            href={`/resumes/${row.original.id}/pdf`}
+            href={`/api/resumes/${row.original.id}/pdf`}
             className={buttonVariants("ghost", "icon")}
             aria-label="Download generated resume"
             title="Download generated resume"

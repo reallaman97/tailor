@@ -90,7 +90,7 @@ export function ApprovalSelect({
       {hasScreenshot ? (
         <a
           ref={triggerRef}
-          href={`/resumes/${resumeId}/screenshot`}
+          href={`/api/resumes/${resumeId}/screenshot`}
           target="_blank"
           rel="noopener noreferrer"
           onMouseEnter={handleEnter}
@@ -112,7 +112,7 @@ export function ApprovalSelect({
           >
             {/* eslint-disable-next-line @next/next/no-img-element -- authenticated, per-application binary served from our own route, not a static/optimizable asset */}
             <img
-              src={`/resumes/${resumeId}/screenshot`}
+              src={`/api/resumes/${resumeId}/screenshot`}
               alt="Uploaded proof of application"
               className="max-h-48 w-full rounded object-contain"
             />

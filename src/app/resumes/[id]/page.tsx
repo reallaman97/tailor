@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireUser, requireSuperAdmin } from "@/lib/auth/require-user";
+import { requireResumePlatformAccess, requireSuperAdmin } from "@/lib/auth/require-user";
 import { getResume } from "@/lib/resumes/resumes";
 import { getApplicationDetail } from "@/lib/admin/applications";
 import { getResumeFields } from "@/lib/profile/resume-fields";
 import { getTailoredContent } from "@/lib/tailoring/tailor-resume";
 import { GenerateButton } from "./generate-button";
 import { DetailsForm } from "./details-form";
-import { ScreenshotUpload } from "./screenshot-upload";
+import { ScreenshotUploadDialog } from "./screenshot-upload-dialog";
 import { StatusMultiSelect } from "../status-select";
 import { AppShell } from "@/components/app-shell";
 import { ApprovalStatusCell } from "@/components/approval-status-cell";
@@ -27,11 +27,14 @@ function daysOpen(createdAt: Date): number {
 
 export default async function ResumeDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ upload?: string }>;
 }) {
   const { id } = await params;
-  const user = await requireUser();
+  const { upload } = await searchParams;
+  const user = await requireResumePlatformAccess();
   const isSuperAdmin = user.role === "SUPERADMIN";
 
   let resume = await getResume(user.id, id);
@@ -117,7 +120,7 @@ export default async function ResumeDetailPage({
               <div className="flex flex-wrap items-center gap-3">
                 <GenerateButton resumeId={resume.id} hasContent={!!tailoredContent} />
                 {resumeFields && (
-                  <a href={`/resumes/${resume.id}/pdf`} className={buttonVariants("outline", "md")}>
+                  <a href={`/api/resumes/${resume.id}/pdf`} className={buttonVariants("outline", "md")}>
                     <DownloadIcon className="size-4" />
                     Download PDF
                   </a>
@@ -235,18 +238,25 @@ export default async function ResumeDetailPage({
           <Card>
             <CardHeader>
               <CardTitle>Proof of application</CardTitle>
-              <CardDescription>
-                {isOwnResume
-                  ? "Upload a screenshot showing you submitted this application — a superadmin reviews it before it counts as approved."
-                  : "Proof of application uploaded by this user."}
-              </CardDescription>
+              {!isOwnResume && <CardDescription>Proof of application uploaded by this user.</CardDescription>}
             </CardHeader>
             <CardContent>
-              <ScreenshotUpload
-                resumeId={resume.id}
-                hasScreenshot={resume.hasScreenshot}
-                readOnly={!isOwnResume}
-              />
+              {isOwnResume ? (
+                <ScreenshotUploadDialog
+                  resumeId={resume.id}
+                  hasScreenshot={resume.hasScreenshot}
+                  autoOpen={upload === "1"}
+                />
+              ) : resume.hasScreenshot ? (
+                // eslint-disable-next-line @next/next/no-img-element -- authenticated, per-application binary served from our own route, not a static/optimizable asset
+                <img
+                  src={`/api/resumes/${resume.id}/screenshot`}
+                  alt="Uploaded proof of application"
+                  className="max-h-80 w-auto rounded-md border border-border object-contain"
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">Empty — this user hasn&apos;t uploaded proof yet.</p>
+              )}
             </CardContent>
           </Card>
         </section>

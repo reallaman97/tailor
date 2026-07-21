@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireUser } from "@/lib/auth/require-user";
+import { requireResumePlatformAccess } from "@/lib/auth/require-user";
 import { listResumes } from "@/lib/resumes/resumes";
 import { listAllApplications } from "@/lib/admin/applications";
 import { AdminApplicationsTable } from "./admin-applications-table";
@@ -11,7 +11,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { PlusIcon, FileTextIcon } from "@/components/icons";
 
 export default async function ResumesPage() {
-  const user = await requireUser();
+  const user = await requireResumePlatformAccess();
   const isSuperAdmin = user.role === "SUPERADMIN";
 
   if (isSuperAdmin) {

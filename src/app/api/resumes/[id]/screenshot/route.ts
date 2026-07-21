@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/auth/require-user";
+import { requireResumePlatformAccess } from "@/lib/auth/require-user";
 import { db } from "@/lib/db";
 import { getScreenshot } from "@/lib/resumes/resumes";
 import { getApplicationScreenshot } from "@/lib/admin/applications";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await requireUser();
+  const user = await requireResumePlatformAccess();
 
   let screenshot = await getScreenshot(user.id, id);
 

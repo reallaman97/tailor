@@ -1,6 +1,6 @@
 import type { DefaultSession } from "next-auth";
 
-type Role = "USER" | "SUPERADMIN";
+type Role = "SUPERADMIN" | "BIDDER" | "CALLER";
 
 declare module "next-auth" {
   interface User {

@@ -8,58 +8,35 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Logo } from "@/components/logo";
 import { Footer } from "@/components/footer";
 import { cn } from "@/lib/utils";
-import {
-  LayoutDashboardIcon,
-  UserIcon,
-  LogOutIcon,
-  SettingsIcon,
-  FileTextIcon,
-  SparklesIcon,
-} from "@/components/icons";
+import { LogOutIcon, UsersIcon, FolderIcon } from "@/components/icons";
 
 type NavLink = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 
-const DASHBOARD_LINK: NavLink = { href: "/dashboard", label: "Dashboard", icon: LayoutDashboardIcon };
-
-// Dashboard is superadmin-only (it's an org-wide aggregate, not a personal
-// view), so it's prepended separately rather than living in this list.
-const MAIN_LINKS: NavLink[] = [
-  { href: "/resumes/new", label: "Resume Builder", icon: SparklesIcon },
-  { href: "/resumes", label: "Applications", icon: FileTextIcon },
+const ADMIN_NAV_LINKS: NavLink[] = [
+  { href: "/admin/users", label: "Users", icon: UsersIcon },
+  { href: "/admin/profiles", label: "Profiles", icon: FolderIcon },
 ];
 
-// "Your profile" is a normal user's own read-only view of their assigned
-// profile — a superadmin manages every profile from /admin/profiles instead.
-const PROFILE_LINK: NavLink = { href: "/profile", label: "Profile", icon: UserIcon };
-
-// Users and Profiles are platform-wide (they span every tool, not just this
-// one), so they're managed from the Cute Job Platform home page instead of
-// living in this tool-specific nav — only Settings stays, since it's Resume
-// Platform's own config (OpenAI model, tailoring prompt, resume template).
-const ADMIN_LINKS: NavLink[] = [{ href: "/admin/settings", label: "Settings", icon: SettingsIcon }];
-
-export function AppShell({
+/**
+ * Shell for the platform-wide admin pages (Users, Profiles) — distinct from
+ * AppShell, which is Resume Platform's own shell. User/profile management
+ * spans every tool, not just Resume Platform, so it gets its own breadcrumb
+ * ("Cute Job Platform / Platform Administration") and nav rather than
+ * borrowing Resume Platform's Dashboard/Resume Builder/Applications/Settings
+ * tabs, which would misleadingly imply these pages live inside that tool.
+ */
+export function AdminShell({
   userEmail,
-  isSuperAdmin = false,
   wide = false,
   children,
 }: {
   userEmail: string;
-  isSuperAdmin?: boolean;
-  /** Widens the content area for pages with unusually wide content (e.g. the admin tracker's many-column table). */
+  /** Widens the content area for pages with unusually wide content (e.g. a many-column table). */
   wide?: boolean;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const isActive = (href: string) => {
-    // "/resumes/new" is a distinct nav item, so it must not also light up "/resumes".
-    if (href === "/resumes") {
-      return pathname === "/resumes" || (pathname?.startsWith("/resumes/") && !pathname.startsWith("/resumes/new"));
-    }
-    return pathname === href || pathname?.startsWith(`${href}/`);
-  };
-
-  const mainLinks = isSuperAdmin ? [DASHBOARD_LINK, ...MAIN_LINKS] : [...MAIN_LINKS, PROFILE_LINK];
+  const isActive = (href: string) => pathname === href || pathname?.startsWith(`${href}/`);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -72,22 +49,13 @@ export function AppShell({
             </span>
           </Link>
           <span className="text-muted-foreground">/</span>
-          <span className="text-sm font-semibold tracking-tight text-foreground">Resume Platform</span>
+          <span className="text-sm font-semibold tracking-tight text-foreground">Platform Administration</span>
         </div>
 
         <nav className="flex flex-1 items-center gap-1 overflow-x-auto">
-          {mainLinks.map((link) => (
+          {ADMIN_NAV_LINKS.map((link) => (
             <TopNavLink key={link.href} link={link} active={isActive(link.href)} />
           ))}
-
-          {isSuperAdmin && (
-            <>
-              <span className="mx-1 h-5 w-px shrink-0 bg-border" />
-              {ADMIN_LINKS.map((link) => (
-                <TopNavLink key={link.href} link={link} active={isActive(link.href)} />
-              ))}
-            </>
-          )}
         </nav>
 
         <div className="flex shrink-0 items-center gap-2">

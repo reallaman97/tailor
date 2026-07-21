@@ -28,7 +28,7 @@ describe("admin users (integration)", () => {
     const users = await listAllUsers();
     const found = users.find((u) => u.id === userId);
     expect(found).toBeDefined();
-    expect(found?.role).toBe("USER");
+    expect(found?.role).toBe("BIDDER");
     expect(found?.assignedProfileId).toBeNull();
   });
 
@@ -49,13 +49,16 @@ describe("admin users (integration)", () => {
     await updateUserRole("someone-else", userId, "SUPERADMIN");
     expect((await listAllUsers()).find((u) => u.id === userId)?.role).toBe("SUPERADMIN");
 
-    await updateUserRole("someone-else", userId, "USER");
-    expect((await listAllUsers()).find((u) => u.id === userId)?.role).toBe("USER");
+    await updateUserRole("someone-else", userId, "BIDDER");
+    expect((await listAllUsers()).find((u) => u.id === userId)?.role).toBe("BIDDER");
+
+    await updateUserRole("someone-else", userId, "CALLER");
+    expect((await listAllUsers()).find((u) => u.id === userId)?.role).toBe("CALLER");
   });
 
   it("refuses to let a superadmin demote themselves", async () => {
     await updateUserRole("someone-else", userId, "SUPERADMIN");
-    await expect(updateUserRole(userId, userId, "USER")).rejects.toThrow(CannotDemoteSelfError);
+    await expect(updateUserRole(userId, userId, "BIDDER")).rejects.toThrow(CannotDemoteSelfError);
     // Role is unchanged after the rejected self-demotion.
     expect((await listAllUsers()).find((u) => u.id === userId)?.role).toBe("SUPERADMIN");
   });

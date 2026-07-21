@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
-import { createTestUser, deleteTestUser } from "@/lib/profile/test-helpers";
+import { createTestUser, deleteTestUser, createTestProfile, deleteTestProfile, MINIMAL_PERSONAL_INFO } from "@/lib/profile/test-helpers";
 import { getDashboardAnalytics } from "@/lib/resumes/analytics";
 import type { ResumeStatus, RoleTrack, ApplicationSource } from "@/generated/prisma/client";
 
@@ -21,11 +21,13 @@ async function seedResume(
     source: ApplicationSource;
     updatedAt: Date;
     followUpDate: Date | null;
+    profileId: string;
   }> = {}
 ) {
   const resume = await db.resume.create({
     data: {
       userId,
+      profileId: overrides.profileId ?? null,
       companyName: "Seed Co",
       jobTitle: "Engineer",
       jobDescription: "A description that is definitely long enough to pass validation.",
@@ -109,6 +111,70 @@ describe("resume analytics (integration, aggregate across all users)", () => {
       expect(after - before).toBe(0);
     } finally {
       await deleteTestUser(userId);
+    }
+  });
+
+  it("buckets applications by profile, including a needs-follow-up count, and groups unassigned applications separately", async () => {
+    const { id: userId } = await createTestUser();
+    const profileId = await createTestProfile({ ...MINIMAL_PERSONAL_INFO, fullName: "Analytics Test Profile" });
+    try {
+      const beforeNoProfileTotal =
+        (await getDashboardAnalytics()).byProfile.find((p) => p.profileId === null)?.total ?? 0;
+
+      await seedResume(userId, { profileId, status: "APPLIED", updatedAt: daysAgo(10) }); // open + stale -> needs follow-up
+      await seedResume(userId, { profileId, status: "OFFER" });
+      await seedResume(userId, { profileId, status: "CANCELED" });
+      await seedResume(userId, { status: "APPLIED" }); // no profile -> falls into the null bucket
+
+      const after = await getDashboardAnalytics();
+      const profileRow = after.byProfile.find((p) => p.profileId === profileId)!;
+      expect(profileRow.profileName).toBe("Analytics Test Profile");
+      expect(profileRow.total).toBe(3);
+      expect(profileRow.awaitingResponse).toBe(1);
+      expect(profileRow.positiveResponses).toBe(1);
+      expect(profileRow.rejected).toBe(1);
+      expect(profileRow.pending).toBe(1);
+      expect(profileRow.needsFollowUp).toBe(1);
+      expect(profileRow.positiveRate).toBeCloseTo((1 / 3) * 100);
+
+      const afterNoProfileTotal = after.byProfile.find((p) => p.profileId === null)?.total ?? 0;
+      expect(afterNoProfileTotal - beforeNoProfileTotal).toBe(1);
+    } finally {
+      await deleteTestUser(userId);
+      await deleteTestProfile(profileId);
+    }
+  });
+
+  it("scopes every section (overview, role track, source, today, weekly) to one profile when filtered", async () => {
+    const { id: userId } = await createTestUser();
+    const profileId = await createTestProfile();
+    try {
+      // A throwaway profile starts with nothing tracked, so a scoped call can
+      // assert exact totals rather than a before/after delta.
+      await seedResume(userId, { profileId, status: "APPLIED", roleTrack: "BACKEND", source: "RECRUITER" });
+      await seedResume(userId, { profileId, status: "OFFER", roleTrack: "BACKEND", source: "RECRUITER", updatedAt: new Date() });
+      // Unrelated data outside the scoped profile must not leak in.
+      await seedResume(userId, { status: "REPLY", roleTrack: "FRONTEND", source: "JOB_BOARD" });
+
+      const scoped = await getDashboardAnalytics({ profileId });
+      expect(scoped.overview.total).toBe(2);
+      expect(scoped.overview.awaitingResponse).toBe(1);
+      expect(scoped.overview.positiveResponses).toBe(1);
+
+      const backend = scoped.byRoleTrack.find((r) => r.roleTrack === "BACKEND")!;
+      expect(backend.applied).toBe(2);
+      const frontend = scoped.byRoleTrack.find((r) => r.roleTrack === "FRONTEND")!;
+      expect(frontend.applied).toBe(0);
+
+      const recruiter = scoped.bySource.find((s) => s.source === "RECRUITER")!;
+      expect(recruiter.applied).toBe(2);
+      const jobBoard = scoped.bySource.find((s) => s.source === "JOB_BOARD")!;
+      expect(jobBoard.applied).toBe(0);
+
+      expect(scoped.today.positiveResponses).toBe(1);
+    } finally {
+      await deleteTestUser(userId);
+      await deleteTestProfile(profileId);
     }
   });
 

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireSuperAdmin } from "@/lib/auth/require-user";
 import { listAllProfiles } from "@/lib/admin/profiles";
 import { deleteProfileAction } from "./actions";
-import { AppShell } from "@/components/app-shell";
+import { AdminShell } from "@/components/admin-shell";
 import { PageHeader } from "@/components/page-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { buttonVariants } from "@/components/ui/button";
@@ -14,7 +14,7 @@ export default async function AdminProfilesPage() {
   const profiles = await listAllProfiles();
 
   return (
-    <AppShell userEmail={admin.email} isSuperAdmin>
+    <AdminShell userEmail={admin.email}>
       <div className="flex flex-col gap-6">
         <PageHeader
           title="Profiles"
@@ -77,6 +77,6 @@ export default async function AdminProfilesPage() {
           </TableBody>
         </Table>
       </div>
-    </AppShell>
+    </AdminShell>
   );
 }
