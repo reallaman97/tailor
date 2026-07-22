@@ -6,20 +6,13 @@ import { getProfileDek } from "@/lib/profile/dek";
 import { encryptJson, decryptJson } from "@/lib/profile/crypto";
 import { generateTailoredContent, TAILORING_PROMPT_VERSION } from "@/lib/tailoring/generate";
 import { recordUsageEvent } from "@/lib/tailoring/usage";
-import { consumeRateLimit } from "@/lib/rate-limit";
 import { getSettings } from "@/lib/settings";
 import type { TailoredContent } from "@/lib/tailoring/schema";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 export class ProfileIncompleteError extends Error {
   constructor() {
     super("Save your personal info before generating a tailored resume");
   }
-}
-
-function getDailyLimit(): number {
-  return Number(process.env.TAILORING_DAILY_LIMIT ?? "20");
 }
 
 /**
@@ -56,19 +49,6 @@ export async function tailorResume(userId: string, resumeId: string): Promise<vo
   // re-synced here in case the profile assignment changed since creation.
   const profileId = await getAssignedProfileId(userId);
   if (!profileId) throw new ProfileIncompleteError();
-
-  // Reserve a daily slot atomically BEFORE the paid OpenAI call so parallel
-  // requests can't all clear a stale count and blow past the cap (unbounded
-  // spend on the shared key). Placed after the profile checks so a guaranteed
-  // failure that never reaches the model doesn't burn a slot. Fail-closed: a
-  // reserved slot counts even if generation later errors.
-  const limit = getDailyLimit();
-  await consumeRateLimit(
-    `tailoring:${userId}`,
-    limit,
-    DAY_MS,
-    `Daily generation limit reached (${limit}/day). Try again tomorrow.`
-  );
 
   const settings = await getSettings();
   const result = await generateTailoredContent(resumeFields, resume.jobDescription, {

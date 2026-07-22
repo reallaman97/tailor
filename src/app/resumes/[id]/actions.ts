@@ -1,42 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { requireResumePlatformAccess, requireSuperAdmin } from "@/lib/auth/require-user";
-import { tailorResume, ProfileIncompleteError } from "@/lib/tailoring/tailor-resume";
 import { ResumeNotFoundError, InvalidScreenshotError, uploadScreenshot } from "@/lib/resumes/resumes";
 import { updateApplicationDetails } from "@/lib/admin/applications";
 import { updateResumeDetailsSchema } from "@/lib/resumes/schemas";
-import { RateLimitExceededError } from "@/lib/rate-limit";
-
-export type GenerateState = { error?: string } | undefined;
-
-export async function generateTailoredResumeAction(
-  resumeId: string,
-  _prevState: GenerateState,
-  _formData: FormData
-): Promise<GenerateState> {
-  const user = await requireResumePlatformAccess();
-
-  try {
-    await tailorResume(user.id, resumeId);
-  } catch (err) {
-    if (err instanceof ProfileIncompleteError || err instanceof RateLimitExceededError) {
-      return { error: err.message };
-    }
-    if (err instanceof ResumeNotFoundError) {
-      return { error: "Resume not found" };
-    }
-    return { error: "Generation failed — try again in a moment" };
-  }
-
-  revalidatePath(`/resumes/${resumeId}`);
-  revalidatePath("/dashboard");
-  // The resume is now built, so prompt for proof of application right away —
-  // this is the only place a Bidder is offered the upload (the detail page has
-  // no standing upload control).
-  redirect(`/resumes/${resumeId}?upload=1`);
-}
 
 export type DetailsActionState = { error?: string; success?: boolean } | undefined;
 

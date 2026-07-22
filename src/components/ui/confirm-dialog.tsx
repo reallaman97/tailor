@@ -66,14 +66,25 @@ export function ConfirmDialog({
       </Button>
       <dialog
         ref={dialogRef}
-        className="m-auto w-full max-w-sm rounded-lg border border-border bg-card p-0 text-card-foreground shadow-lg backdrop:bg-black/50 backdrop:backdrop-blur-[2px]"
+        style={{ width: "calc(100vw - 2rem)", maxWidth: "28rem" }}
+        className="m-auto box-border rounded-lg border border-border bg-card p-0 text-card-foreground shadow-lg backdrop:bg-black/50 backdrop:backdrop-blur-[2px]"
         onClick={(e) => {
           if (e.target === dialogRef.current) dialogRef.current?.close();
         }}
       >
-        <div className="flex flex-col gap-2 p-6">
-          <h3 className="text-base font-semibold">{title}</h3>
-          <p className="text-sm text-muted-foreground">{description}</p>
+        <div className="flex min-w-0 flex-col gap-2 p-6">
+          <h3
+            className="text-base font-semibold"
+            style={{ overflowWrap: "anywhere", wordBreak: "break-word", minWidth: 0 }}
+          >
+            {title}
+          </h3>
+          <p
+            className="text-sm text-muted-foreground"
+            style={{ overflowWrap: "anywhere", wordBreak: "break-word", minWidth: 0 }}
+          >
+            {description}
+          </p>
         </div>
         <div className="flex items-center justify-end gap-3 border-t border-border p-4">
           <Button type="button" variant="secondary" onClick={() => dialogRef.current?.close()}>

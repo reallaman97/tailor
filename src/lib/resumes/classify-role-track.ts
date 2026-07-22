@@ -21,7 +21,8 @@ const INSTRUCTIONS =
 export async function classifyRoleTrack(jobTitle: string, jobDescription: string): Promise<RoleTrack> {
   try {
     const [apiKey, settings] = await Promise.all([getOpenAiApiKey(), getSettings()]);
-    const client = new OpenAI({ apiKey });
+    // Best-effort classification — don't retry a failing call, just fall back to OTHER fast.
+    const client = new OpenAI({ apiKey, maxRetries: 0 });
 
     const response = await client.responses.parse({
       model: settings.openaiModel,

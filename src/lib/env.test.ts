@@ -6,7 +6,6 @@ const KEYS = [
   "MASTER_KEY",
   "AUTH_SECRET",
   "APP_URL",
-  "TAILORING_DAILY_LIMIT",
   "EMAIL_FROM",
   "OPENAI_MODEL",
 ] as const;
@@ -33,22 +32,14 @@ describe("getServerEnv", () => {
 
   it("parses a valid environment and applies documented defaults", () => {
     delete process.env.APP_URL;
-    delete process.env.TAILORING_DAILY_LIMIT;
     delete process.env.EMAIL_FROM;
     delete process.env.OPENAI_MODEL;
     _resetServerEnvCache();
 
     const env = getServerEnv();
     expect(env.APP_URL).toBe("http://localhost:3000");
-    expect(env.TAILORING_DAILY_LIMIT).toBe(20);
     expect(env.EMAIL_FROM).toBe("onboarding@resend.dev");
     expect(env.OPENAI_MODEL).toBe("gpt-4.1-mini");
-  });
-
-  it("coerces TAILORING_DAILY_LIMIT from a string", () => {
-    process.env.TAILORING_DAILY_LIMIT = "5";
-    _resetServerEnvCache();
-    expect(getServerEnv().TAILORING_DAILY_LIMIT).toBe(5);
   });
 
   it("rejects a MASTER_KEY that doesn't decode to 32 bytes", () => {

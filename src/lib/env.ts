@@ -35,9 +35,6 @@ const serverEnvSchema = z.object({
   // OpenAI: env key is the fallback when no per-app Settings override is set.
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().min(1).default("gpt-4.1-mini"),
-
-  // Max tailoring generations per user per rolling 24h, to bound LLM spend.
-  TAILORING_DAILY_LIMIT: z.coerce.number().int().positive().default(20),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

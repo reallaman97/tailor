@@ -77,7 +77,6 @@ start (via [`src/instrumentation.ts`](src/instrumentation.ts)) instead of mid-re
 | `APP_URL` | no | base URL for email links (default `http://localhost:3000`) |
 | `RESEND_API_KEY` / `EMAIL_FROM` | for email | password-reset delivery |
 | `OPENAI_API_KEY` / `OPENAI_MODEL` | for AI | fallback if no key is set in Settings |
-| `TAILORING_DAILY_LIMIT` | no | per-user daily generation cap (default 20) |
 
 ## Scripts
 

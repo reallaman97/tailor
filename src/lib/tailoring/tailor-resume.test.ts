@@ -7,10 +7,7 @@ import { getProfileDek } from "@/lib/profile/dek";
 import { encryptJson } from "@/lib/profile/crypto";
 import { createResume } from "@/lib/resumes/resumes";
 import { ResumeNotFoundError } from "@/lib/resumes/resumes";
-import { RateLimitExceededError, consumeRateLimit } from "@/lib/rate-limit";
 import { tailorResume, getTailoredContent, sanitizeTailoredContent, ProfileIncompleteError } from "./tailor-resume";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 describe("sanitizeTailoredContent (pure)", () => {
   it("drops work history entries with an entryId the candidate doesn't have", () => {
@@ -51,15 +48,12 @@ describe("sanitizeTailoredContent (pure)", () => {
 
 describe("tailorResume error paths (integration, no live LLM call)", () => {
   let userId: string;
-  let profileId: string | undefined;
 
   beforeAll(async () => {
     ({ id: userId } = await createTestUser());
   });
 
   afterAll(async () => {
-    await db.rateLimitCounter.deleteMany({ where: { key: `tailoring:${userId}` } });
-    if (profileId) await db.profile.delete({ where: { id: profileId } });
     await deleteTestUser(userId);
   });
 
@@ -76,35 +70,6 @@ describe("tailorResume error paths (integration, no live LLM call)", () => {
     });
 
     await expect(tailorResume(userId, resumeId)).rejects.toThrow(ProfileIncompleteError);
-  });
-
-  it("throws RateLimitExceededError before ever calling the LLM once the daily cap is hit", async () => {
-    profileId = await createProfile(MINIMAL_PERSONAL_INFO);
-    await assignProfileToUser(profileId, userId);
-    const resumeId = await createResume(userId, {
-      jobLink: undefined,
-      companyName: "Globex",
-      jobTitle: "Manager",
-      jobDescription: "A description that is definitely long enough to pass validation.",
-    });
-
-    // No OPENAI_API_KEY is configured in this test environment, so if
-    // tailorResume reached the LLM call it would throw a different, unrelated
-    // error — asserting RateLimitExceededError here proves the rate limit
-    // check runs (and blocks) before that point. Pre-fill today's reservation
-    // quota so the reservation tailorResume makes is the one that's rejected.
-    for (let i = 0; i < 3; i++) {
-      await consumeRateLimit(`tailoring:${userId}`, 100, DAY_MS);
-    }
-
-    const originalLimit = process.env.TAILORING_DAILY_LIMIT;
-    process.env.TAILORING_DAILY_LIMIT = "3";
-    try {
-      await expect(tailorResume(userId, resumeId)).rejects.toThrow(RateLimitExceededError);
-    } finally {
-      if (originalLimit) process.env.TAILORING_DAILY_LIMIT = originalLimit;
-      else delete process.env.TAILORING_DAILY_LIMIT;
-    }
   });
 });
 

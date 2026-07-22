@@ -3,8 +3,7 @@ import { db } from "@/lib/db";
 import { createTestUser, deleteTestUser } from "@/lib/profile/test-helpers";
 import { recordUsageEvent } from "./usage";
 
-// The daily generation cap is enforced atomically via consumeRateLimit (see
-// rate-limit.test.ts); UsageEvent here is purely cost/token accounting.
+// UsageEvent here is purely cost/token accounting.
 describe("usage tracking (integration)", () => {
   let userId: string;
 

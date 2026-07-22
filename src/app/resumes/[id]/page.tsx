@@ -5,9 +5,7 @@ import { getResume, type ResumeDetail } from "@/lib/resumes/resumes";
 import { getApplicationDetail, type AdminApplicationDetail } from "@/lib/admin/applications";
 import { getResumeFieldsForResume } from "@/lib/profile/resume-fields";
 import { decryptTailoredContent } from "@/lib/tailoring/tailor-resume";
-import { GenerateButton } from "./generate-button";
 import { DetailsForm } from "./details-form";
-import { ScreenshotUploadDialog } from "./screenshot-upload-dialog";
 import { StatusMultiSelect } from "../status-select";
 import { ApprovalSelect } from "../approval-select";
 import { AppShell } from "@/components/app-shell";
@@ -43,15 +41,8 @@ function daysOpen(resume: {
   return Math.max(0, Math.floor((end - start) / DAY_MS));
 }
 
-export default async function ResumeDetailPage({
-  params,
-  searchParams,
-}: {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ upload?: string }>;
-}) {
+export default async function ResumeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { upload } = await searchParams;
   const user = await requireResumePlatformAccess();
   const isSuperAdmin = user.role === "SUPERADMIN";
 
@@ -135,29 +126,28 @@ export default async function ResumeDetailPage({
             </CardContent>
           </Card>
 
-          {isOwnResume ? (
-            <>
-              {!resumeFields && (
-                <Alert>
-                  Your profile hasn&apos;t been set up yet. Contact an administrator before generating a
-                  tailored resume.
-                </Alert>
-              )}
+          {!resumeFields && isOwnResume && (
+            <Alert>
+              Your profile hasn&apos;t been set up yet. Contact an administrator so a tailored resume can be
+              generated for you.
+            </Alert>
+          )}
 
-              <div className="flex flex-wrap items-center gap-3">
-                <GenerateButton resumeId={resume.id} hasContent={!!tailoredContent} />
-                {resumeFields && (
-                  <a href={`/api/resumes/${resume.id}/pdf`} className={buttonVariants("outline", "md")}>
-                    <DownloadIcon className="size-4" />
-                    Download PDF
-                  </a>
-                )}
-              </div>
-            </>
-          ) : (
-            !tailoredContent && (
-              <p className="text-sm text-muted-foreground">This user hasn&apos;t generated a tailored resume yet.</p>
-            )
+          <div className="flex flex-wrap items-center gap-3">
+            {resumeFields && (
+              <a href={`/api/resumes/${resume.id}/pdf`} className={buttonVariants("outline", "md")}>
+                <DownloadIcon className="size-4" />
+                Download tailored resume
+              </a>
+            )}
+            <a href={`/api/resumes/${resume.id}/job-description`} className={buttonVariants("outline", "md")}>
+              <DownloadIcon className="size-4" />
+              Download JD
+            </a>
+          </div>
+
+          {!tailoredContent && (
+            <p className="text-sm text-muted-foreground">No tailored resume has been generated for this application yet.</p>
           )}
 
           {tailoredContent && (
@@ -271,29 +261,7 @@ export default async function ResumeDetailPage({
               {!isOwnResume && <CardDescription>Proof of application uploaded by this user.</CardDescription>}
             </CardHeader>
             <CardContent>
-              {isOwnResume ? (
-                <div className="flex flex-col gap-3">
-                  {resume.hasScreenshot ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- authenticated, per-application binary served from our own route, not a static/optimizable asset
-                    <img
-                      src={`/api/resumes/${resume.id}/screenshot`}
-                      alt="Uploaded proof of application"
-                      className="max-h-80 w-auto rounded-md border border-border object-contain"
-                    />
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No proof uploaded yet. You&apos;ll be prompted to upload it right after you build the resume above.
-                    </p>
-                  )}
-                  {/* No standing upload control: the dialog only opens right after a build (?upload=1). */}
-                  <ScreenshotUploadDialog
-                    resumeId={resume.id}
-                    hasScreenshot={resume.hasScreenshot}
-                    autoOpen={upload === "1"}
-                    showTrigger={false}
-                  />
-                </div>
-              ) : resume.hasScreenshot ? (
+              {resume.hasScreenshot ? (
                 // eslint-disable-next-line @next/next/no-img-element -- authenticated, per-application binary served from our own route, not a static/optimizable asset
                 <img
                   src={`/api/resumes/${resume.id}/screenshot`}
@@ -301,7 +269,11 @@ export default async function ResumeDetailPage({
                   className="max-h-80 w-auto rounded-md border border-border object-contain"
                 />
               ) : (
-                <p className="text-sm text-muted-foreground">Empty — this user hasn&apos;t uploaded proof yet.</p>
+                <p className="text-sm text-muted-foreground">
+                  {isOwnResume
+                    ? "No proof uploaded yet. You're prompted to upload it right after building a resume."
+                    : "Empty — this user hasn't uploaded proof yet."}
+                </p>
               )}
             </CardContent>
           </Card>

@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import OpenAI, { APIError } from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { tailoredContentSchema, type TailoredContent } from "@/lib/tailoring/schema";
 import { getOpenAiApiKey } from "@/lib/settings";
@@ -8,10 +8,26 @@ export const TAILORING_PROMPT_VERSION = "tailoring-v1";
 
 // Not cached: the key can change at runtime (a superadmin editing it in
 // Settings), and constructing a client is cheap — no network call happens
-// until a request is actually made.
+// until a request is actually made. maxRetries is low so a doomed request
+// (e.g. an out-of-quota 429) fails quickly instead of retrying for ~a minute.
 async function getClient(): Promise<OpenAI> {
   const apiKey = await getOpenAiApiKey();
-  return new OpenAI({ apiKey });
+  return new OpenAI({ apiKey, maxRetries: 1 });
+}
+
+/** Maps raw OpenAI SDK errors to a clear, user-facing message. */
+function toFriendlyOpenAiError(err: unknown): Error {
+  if (err instanceof APIError) {
+    if (err.code === "insufficient_quota") {
+      return new Error(
+        "OpenAI quota exceeded — the account is out of credits. Add billing/credits at platform.openai.com."
+      );
+    }
+    if (err.status === 429) return new Error("OpenAI is rate-limiting requests right now — try again in a moment.");
+    if (err.status === 401) return new Error("OpenAI rejected the API key — check it in Settings.");
+    return new Error(`OpenAI error (${err.status}): ${err.message}`);
+  }
+  return err instanceof Error ? err : new Error("Tailoring failed — try again.");
 }
 
 export function buildInput(resumeFields: ResumeFields, jobDescription: string): string {
@@ -43,12 +59,17 @@ export async function generateTailoredContent(
 ): Promise<TailoringResult> {
   const client = await getClient();
 
-  const response = await client.responses.parse({
-    model: options.model,
-    instructions: options.systemPrompt,
-    input: buildInput(resumeFields, jobDescription),
-    text: { format: zodTextFormat(tailoredContentSchema, "tailored_content") },
-  });
+  let response;
+  try {
+    response = await client.responses.parse({
+      model: options.model,
+      instructions: options.systemPrompt,
+      input: buildInput(resumeFields, jobDescription),
+      text: { format: zodTextFormat(tailoredContentSchema, "tailored_content") },
+    });
+  } catch (err) {
+    throw toFriendlyOpenAiError(err);
+  }
 
   if (!response.output_parsed) {
     throw new Error("The model did not return structured tailoring output. Try again.");

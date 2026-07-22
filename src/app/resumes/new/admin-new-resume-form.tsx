@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
 import Link from "next/link";
 import { createResumeAsAdminAction } from "./admin-actions";
 import { FormField } from "@/components/ui/form-field";
@@ -19,6 +19,17 @@ export function AdminNewResumeForm({ profiles }: { profiles: BuildableProfile[] 
   const [state, formAction, pending] = useActionState(createResumeAsAdminAction, undefined);
   const [profileId, setProfileId] = usePersistedState("admin-resume-builder:profileId", "");
   const [source, setSource] = usePersistedState<ApplicationSource>("admin-resume-builder:source", "OTHER");
+
+  // On a successful build, download the tailored resume PDF right away.
+  useEffect(() => {
+    if (state?.resumeId) {
+      const a = document.createElement("a");
+      a.href = `/api/resumes/${state.resumeId}/pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+  }, [state?.resumeId]);
 
   return (
     <form action={formAction} className="flex flex-col gap-4">
@@ -58,17 +69,17 @@ export function AdminNewResumeForm({ profiles }: { profiles: BuildableProfile[] 
       </FormField>
 
       <FormField label="Company name" htmlFor="companyName">
-        <Input id="companyName" name="companyName" required />
+        <Input id="companyName" name="companyName" required defaultValue={state?.values?.companyName} />
       </FormField>
       <FormField label="Job title" htmlFor="jobTitle">
-        <Input id="jobTitle" name="jobTitle" required />
+        <Input id="jobTitle" name="jobTitle" required defaultValue={state?.values?.jobTitle} />
       </FormField>
       <FormField
         label="Job posting URL"
         htmlFor="jobLink"
         hint="Used to catch duplicates — if this profile already has a resume built for this exact posting, we'll stop you here."
       >
-        <Input id="jobLink" name="jobLink" placeholder="https:// (optional)" />
+        <Input id="jobLink" name="jobLink" placeholder="https:// (optional)" defaultValue={state?.values?.jobLink} />
       </FormField>
       <FormField label="Job description" htmlFor="jobDescription">
         <Textarea
@@ -77,17 +88,19 @@ export function AdminNewResumeForm({ profiles }: { profiles: BuildableProfile[] 
           placeholder="Paste the full job description"
           required
           rows={10}
+          defaultValue={state?.values?.jobDescription}
         />
       </FormField>
 
       {state?.error && <Alert variant="destructive">{state.error}</Alert>}
+      {state?.resumeId && <Alert variant="success">Resume built — the PDF is downloading.</Alert>}
 
       <div className="flex items-center gap-3">
         <Button type="submit" loading={pending}>
-          {pending ? "Building…" : "Build resume"}
+          {pending ? (state?.error ? "Retrying…" : "Building…") : state?.error ? "Retry" : "Build resume"}
         </Button>
         <Link href="/resumes" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
-          Cancel
+          {state?.resumeId ? "Go to applications" : "Cancel"}
         </Link>
       </div>
     </form>
