@@ -14,9 +14,21 @@ describe("tools registry", () => {
     expect(bidderTools).toEqual(["resume-platform"]);
   });
 
-  it("gives a caller access to only Interview AI, Meeting Calendar, and Networking Hub", () => {
+  it("gives a caller access to Interview Management plus the coming-soon caller tools", () => {
     const callerTools = toolsForRole("CALLER").map((t) => t.key);
-    expect(callerTools.sort()).toEqual(["interview-ai", "meeting-calendar", "networking-hub"].sort());
+    expect(callerTools.sort()).toEqual(
+      ["interview-management", "interview-ai", "meeting-calendar", "networking-hub"].sort()
+    );
+  });
+
+  it("gives a manager access to only Interview Management", () => {
+    const managerTools = toolsForRole("MANAGER").map((t) => t.key);
+    expect(managerTools).toEqual(["interview-management"]);
+  });
+
+  it("marks Interview Management as open for a manager", () => {
+    const interview = TOOLS.find((t) => t.key === "interview-management")!;
+    expect(toolStatusFor("MANAGER", interview)).toBe("open");
   });
 
   it("excludes a bidder from tools not on their allowlist", () => {

@@ -46,6 +46,16 @@ export function SidebarShell({
     if (href === "/resumes") {
       return pathname === "/resumes" || (pathname?.startsWith("/resumes/") && !pathname.startsWith("/resumes/new"));
     }
+    // "/interview" (Calendar) is the index: keep it lit on the calendar and on
+    // interview detail pages, but not on the sibling sections that have their
+    // own nav items (list / new / settings).
+    if (href === "/interview") {
+      const sections = ["/interview/list", "/interview/new", "/interview/settings", "/interview/availability"];
+      return (
+        pathname === "/interview" ||
+        (!!pathname?.startsWith("/interview/") && !sections.some((section) => pathname.startsWith(section)))
+      );
+    }
     return pathname === href || pathname?.startsWith(`${href}/`);
   };
 

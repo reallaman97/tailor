@@ -245,6 +245,7 @@ export function UsersTable({
         options={[
           { value: "BIDDER", label: "Bidder" },
           { value: "CALLER", label: "Caller" },
+          { value: "MANAGER", label: "Manager" },
           { value: "SUPERADMIN", label: "Superadmin" },
         ]}
       />

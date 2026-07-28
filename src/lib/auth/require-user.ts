@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { TOOLS, canAccessTool } from "@/lib/tools";
 
-export type Role = "SUPERADMIN" | "BIDDER" | "CALLER";
+export type Role = "SUPERADMIN" | "BIDDER" | "CALLER" | "MANAGER";
 
 /**
  * The real auth boundary. Call this at the top of every server action, route
@@ -59,4 +59,38 @@ export async function requireResumePlatformAccess(): Promise<{ id: string; email
   }
 
   return { id: user.id, email: user.email, role: fresh.role };
+}
+
+/**
+ * The authorization boundary for every Interview Management page/action. Mirrors
+ * requireResumePlatformAccess(): re-reads the role fresh from the database and
+ * bounces anyone not on the tool's allowlist (Manager/Caller, plus Superadmin)
+ * back to the hub. The returned `role` is what callers use to decide scope
+ * (a Caller only ever sees their own assigned interviews) — see
+ * src/lib/interview/interviews.ts.
+ */
+export async function requireInterviewAccess(): Promise<{ id: string; email: string; role: Role }> {
+  const user = await requireUser();
+  const fresh = await db.user.findUniqueOrThrow({ where: { id: user.id }, select: { role: true } });
+
+  const interviewTool = TOOLS.find((tool) => tool.key === "interview-management")!;
+  if (!canAccessTool(fresh.role, interviewTool)) {
+    redirect("/");
+  }
+
+  return { id: user.id, email: user.email, role: fresh.role };
+}
+
+/**
+ * The stricter Interview Management boundary for manager-only work: create /
+ * edit / delete an interview, assign a caller, and configure settings. A Caller
+ * has interview access but not this — they can only comment on and re-status
+ * interviews already assigned to them. Superadmin always qualifies.
+ */
+export async function requireInterviewManager(): Promise<{ id: string; email: string; role: Role }> {
+  const access = await requireInterviewAccess();
+  if (access.role !== "SUPERADMIN" && access.role !== "MANAGER") {
+    redirect("/interview");
+  }
+  return access;
 }

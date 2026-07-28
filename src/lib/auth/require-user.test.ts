@@ -18,7 +18,13 @@ vi.mock("next/navigation", () => ({ redirect: (url: string) => redirectMock(url)
 
 import { db } from "@/lib/db";
 import { createTestUser, deleteTestUser } from "@/lib/profile/test-helpers";
-import { requireUser, requireSuperAdmin, requireResumePlatformAccess } from "./require-user";
+import {
+  requireUser,
+  requireSuperAdmin,
+  requireResumePlatformAccess,
+  requireInterviewAccess,
+  requireInterviewManager,
+} from "./require-user";
 import type { UserRole } from "@/generated/prisma/client";
 
 type SessionUser = { id: string; email: string; role: UserRole };
@@ -108,6 +114,40 @@ describe("require-user authorization boundary (integration)", () => {
       await setDbRole(userId, "CALLER");
       withSession({ id: userId, email, role: "BIDDER" });
       await expect(requireResumePlatformAccess()).rejects.toThrow("REDIRECT:/");
+    });
+  });
+
+  describe("requireInterviewAccess (DB-checked)", () => {
+    it("grants a MANAGER access", async () => {
+      await setDbRole(userId, "MANAGER");
+      withSession({ id: userId, email, role: "MANAGER" });
+      await expect(requireInterviewAccess()).resolves.toEqual({ id: userId, email, role: "MANAGER" });
+    });
+
+    it("grants a CALLER access", async () => {
+      await setDbRole(userId, "CALLER");
+      withSession({ id: userId, email, role: "CALLER" });
+      await expect(requireInterviewAccess()).resolves.toMatchObject({ role: "CALLER" });
+    });
+
+    it("redirects a BIDDER (not on the interview allowlist) to /", async () => {
+      await setDbRole(userId, "BIDDER");
+      withSession({ id: userId, email, role: "BIDDER" });
+      await expect(requireInterviewAccess()).rejects.toThrow("REDIRECT:/");
+    });
+  });
+
+  describe("requireInterviewManager (DB-checked)", () => {
+    it("grants a MANAGER manager-level access", async () => {
+      await setDbRole(userId, "MANAGER");
+      withSession({ id: userId, email, role: "MANAGER" });
+      await expect(requireInterviewManager()).resolves.toMatchObject({ role: "MANAGER" });
+    });
+
+    it("sends a CALLER back to the interview hub (has access, but not manager rights)", async () => {
+      await setDbRole(userId, "CALLER");
+      withSession({ id: userId, email, role: "CALLER" });
+      await expect(requireInterviewManager()).rejects.toThrow("REDIRECT:/interview");
     });
   });
 });

@@ -28,6 +28,8 @@ export type AppSettings = {
   hasCustomApiKey: boolean;
   /** e.g. "••••ab12" — safe to display; null if no custom key is set. */
   apiKeyHint: string | null;
+  /** IANA timezone used to render all Interview Management times. */
+  interviewTimezone: string;
 };
 
 export type UpdateSettingsInput = {
@@ -54,7 +56,22 @@ export async function getSettings(): Promise<AppSettings> {
     resumeTemplate: row.resumeTemplate,
     hasCustomApiKey: row.openaiApiKeyEnc !== null,
     apiKeyHint,
+    interviewTimezone: row.interviewTimezone,
   };
+}
+
+/** The interview-display timezone alone — cheaper than getSettings() when that's all you need. */
+export async function getInterviewTimezone(): Promise<string> {
+  const row = await db.appSettings.findUniqueOrThrow({
+    where: { id: SETTINGS_ID },
+    select: { interviewTimezone: true },
+  });
+  return row.interviewTimezone;
+}
+
+/** Updates only the interview timezone, leaving the OpenAI/resume settings untouched. */
+export async function updateInterviewTimezone(timezone: string): Promise<void> {
+  await db.appSettings.update({ where: { id: SETTINGS_ID }, data: { interviewTimezone: timezone } });
 }
 
 export async function updateSettings(input: UpdateSettingsInput): Promise<void> {

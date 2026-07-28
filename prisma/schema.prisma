@@ -16,6 +16,9 @@ enum UserRole {
   SUPERADMIN
   BIDDER
   CALLER
+  // Interview Management operator: full CRUD on interviews, assigns callers,
+  // and configures interview settings. Distinct from BIDDER (Resume Platform).
+  MANAGER
 }
 
 model User {
@@ -48,6 +51,16 @@ model User {
   resumes        Resume[]
   passwordResets PasswordResetToken[]
   usageEvents    UsageEvent[]
+
+  // Interview Management: interviews this user created (as a Manager/Super Admin)
+  // vs. interviews assigned to them (as a Caller) — two distinct relations, so
+  // they need explicit @relation names to disambiguate.
+  createdInterviews  Interview[]              @relation("InterviewCreatedBy")
+  assignedInterviews Interview[]              @relation("InterviewCaller")
+  interviewComments  InterviewComment[]
+  interviewFiles     InterviewReferenceFile[]
+  // Recurring weekly availability a Caller submits; managers view it in aggregate.
+  availability       CallerAvailability[]
 
   @@index([profileId])
 }
@@ -101,6 +114,7 @@ model Profile {
   education   EducationEntry[]
   skillGroups SkillGroup[]
   resumes     Resume[]
+  interviews  Interview[]
 }
 
 enum WorkingStyle {
@@ -265,6 +279,10 @@ model Resume {
   appliedAt   DateTime? // when user marked as applied
 
   usageEvents UsageEvent[]
+  // Interviews created from this application (the source stays linked so the
+  // interview can pull the tailored resume / job info). SetNull on the
+  // interview side keeps interviews if the application is deleted.
+  interviews  Interview[]
 
   @@index([userId])
   @@index([profileId])
@@ -318,6 +336,10 @@ model AppSettings {
   tailoringPrompt String? @db.Text
   resumeTemplate  ResumeTemplate @default(MODERN)
 
+  // Interview Management: IANA timezone (e.g. "America/New_York") used to render
+  // every interview time platform-wide. Validated against Intl in the app layer.
+  interviewTimezone String @default("UTC")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -336,4 +358,187 @@ model RateLimitCounter {
 
   @@id([key, windowStart])
   @@index([windowStart]) // for pruning expired windows
+}
+
+// ── Interview Management ────────────────────────────────
+//
+// Config-driven lists (stages, statuses, meeting types) are TABLES, not enums,
+// so a Manager can add/rename/reorder/deactivate options over time without a
+// migration. Deactivating an option (active=false) never breaks historical
+// interviews: the interview keeps the FK, and reads resolve the row regardless
+// of `active` — `active` only controls whether it's offered in new pickers.
+// The `count()`-append idiom (see src/lib/profile/skills.ts) sets sortOrder.
+
+model InterviewStage {
+  id        String  @id @default(cuid())
+  label     String
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interviews Interview[]
+
+  @@index([active, sortOrder])
+}
+
+model InterviewStatus {
+  id        String  @id @default(cuid())
+  label     String
+  // Hex color for calendar/list pills — kept per-status so stages stay visually
+  // distinct (mirrors STATUS_COLOR in src/lib/resume-status.ts, but data-driven).
+  color     String  @default("#64748b")
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interviews Interview[]
+
+  @@index([active, sortOrder])
+}
+
+model InterviewMeetingType {
+  id        String  @id @default(cuid())
+  label     String
+  sortOrder Int     @default(0)
+  active    Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interviews Interview[]
+
+  @@index([active, sortOrder])
+}
+
+model Interview {
+  id String @id @default(cuid())
+
+  // Who created it (a Manager/Super Admin). Kept on delete of the user? A user
+  // delete cascades their created interviews — same as Resume.userId. If that's
+  // ever undesirable this becomes SetNull, but it matches the Resume precedent.
+  createdById String
+  createdBy   User   @relation("InterviewCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
+  // The assigned Caller (nullable — an interview can exist unassigned). SetNull
+  // so deleting or reassigning the caller never deletes the interview.
+  callerId String?
+  caller   User?   @relation("InterviewCaller", fields: [callerId], references: [id], onDelete: SetNull)
+
+  // Source Application (nullable — "from scratch" leaves this null). SetNull so
+  // deleting the application keeps the interview, just unlinked.
+  applicationId String?
+  application   Resume? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  // Candidate profile for the (login-gated) shareable Profile view. Usually
+  // copied from the source application at creation. SetNull on profile delete.
+  profileId String?
+  profile   Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+
+  // Config-driven FKs — all SetNull so deleting a config row never orphans-delete
+  // an interview (in practice we deactivate rather than delete).
+  stageId String?
+  stage   InterviewStage? @relation(fields: [stageId], references: [id], onDelete: SetNull)
+
+  statusId String?
+  status   InterviewStatus? @relation(fields: [statusId], references: [id], onDelete: SetNull)
+
+  meetingTypeId String?
+  meetingType   InterviewMeetingType? @relation(fields: [meetingTypeId], references: [id], onDelete: SetNull)
+
+  // Core scalar fields — plaintext, consistent with how Resume treats posting
+  // text (jobDescription/companyName) and operational notes (notes): these are
+  // not the encrypted candidate PII, which lives on Profile.
+  jobTitle        String
+  jobDescription  String  @db.Text
+  jobPostLink     String?
+  companyName     String
+  salaryRange     String?
+  scheduledAt     DateTime? // the interview time; rendered in the Settings timezone
+  meetingLink     String?
+  interviewerInfo String? @db.Text // free text; may embed links
+
+  // Optionally-attached resume file (bytes in Postgres, mirroring
+  // Resume.screenshotData). When `applicationId` is set, the UI instead links to
+  // the existing tailored-resume PDF route, so this stays null unless uploaded.
+  resumeData     Bytes?
+  resumeMimeType String?
+  resumeFilename String?
+
+  // Extensibility: open-ended metadata so future per-interview fields need no
+  // migration. Rendered/edited via the field-definition registry
+  // (src/lib/interview/fields.ts).
+  meta Json @default("{}")
+
+  // Soft delete — deletes are recoverable; every read filters `deletedAt: null`.
+  deletedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  referenceFiles InterviewReferenceFile[]
+  comments       InterviewComment[]
+
+  @@index([callerId])
+  @@index([statusId])
+  @@index([stageId])
+  @@index([scheduledAt])
+  @@index([applicationId])
+  @@index([deletedAt])
+}
+
+model InterviewReferenceFile {
+  id          String    @id @default(cuid())
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  // Who uploaded it — SetNull so deleting the uploader keeps the file.
+  uploadedById String?
+  uploadedBy   User?   @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  filename String
+  mimeType String
+  size     Int
+  data     Bytes
+
+  createdAt DateTime @default(now())
+
+  @@index([interviewId])
+}
+
+model InterviewComment {
+  id          String    @id @default(cuid())
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+
+  // Author — SetNull so deleting a user keeps their comments (shown as "Unknown").
+  authorId String?
+  author   User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  body String @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([interviewId, createdAt])
+}
+
+// A Caller's recurring weekly availability. One row = one available hour slot,
+// keyed by day-of-week (0=Sun..6=Sat) and hour (0..23) in the platform timezone
+// (AppSettings.interviewTimezone). Presence of a row means "available"; saving
+// replaces the caller's whole set. Managers/Super Admins read these in aggregate.
+model CallerAvailability {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  dayOfWeek Int // 0 = Sunday … 6 = Saturday
+  hour      Int // 0 … 23
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, dayOfWeek, hour])
+  @@index([userId])
 }

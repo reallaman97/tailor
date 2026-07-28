@@ -22,7 +22,7 @@ export async function updateUserRoleAction(
   const admin = await requireSuperAdmin();
 
   const role = formData.get("role");
-  if (role !== "SUPERADMIN" && role !== "BIDDER" && role !== "CALLER") {
+  if (role !== "SUPERADMIN" && role !== "BIDDER" && role !== "CALLER" && role !== "MANAGER") {
     return { error: "Invalid role" };
   }
 

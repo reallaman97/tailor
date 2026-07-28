@@ -32,6 +32,17 @@ export const TOOLS: ToolDefinition[] = [
     roles: ["BIDDER"],
   },
   {
+    key: "interview-management",
+    name: "Interview Management",
+    description: "Schedule, assign, and track interviews across a configurable pipeline.",
+    icon: CalendarIcon,
+    href: "/interview",
+    released: true,
+    // Managers run the whole pipeline; Callers see (and act on) the interviews
+    // assigned to them. Superadmin always has access regardless of this list.
+    roles: ["MANAGER", "CALLER"],
+  },
+  {
     key: "interview-ai",
     name: "Interview AI Assistant",
     description: "Practice interviews and get real-time feedback from an AI coach.",

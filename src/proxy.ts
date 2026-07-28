@@ -1,7 +1,8 @@
 import { auth } from "@/auth";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/resumes", "/admin", "/account"];
+const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/resumes", "/admin", "/account", "/interview"];
 const RESUME_PLATFORM_ROLES = new Set(["SUPERADMIN", "BIDDER"]);
+const INTERVIEW_ROLES = new Set(["SUPERADMIN", "MANAGER", "CALLER"]);
 
 // UX convenience only — redirects logged-out visitors away from protected
 // pages, non-admins away from /admin, and roles without Resume Platform
@@ -36,8 +37,16 @@ export default auth((req) => {
   ) {
     return Response.redirect(new URL("/", req.nextUrl));
   }
+
+  if (
+    req.nextUrl.pathname.startsWith("/interview") &&
+    req.auth?.user?.role &&
+    !INTERVIEW_ROLES.has(req.auth.user.role)
+  ) {
+    return Response.redirect(new URL("/", req.nextUrl));
+  }
 });
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/profile/:path*", "/resumes/:path*", "/admin/:path*", "/account/:path*"],
+  matcher: ["/dashboard/:path*", "/profile/:path*", "/resumes/:path*", "/admin/:path*", "/account/:path*", "/interview/:path*"],
 };
