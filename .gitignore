@@ -43,3 +43,6 @@ next-env.d.ts
 
 # prisma
 /src/generated/prisma
+
+# local env files with secrets
+import.env

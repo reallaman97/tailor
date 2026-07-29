@@ -1,7 +1,7 @@
 import { requireInterviewManager } from "@/lib/auth/require-user";
 import { InterviewShell } from "@/components/interview-shell";
 import { PageHeader } from "@/components/page-header";
-import { getApplicationPrefill, listCallers } from "@/lib/interview/interviews";
+import { getApplicationPrefill, listCallers, listAssignableProfiles } from "@/lib/interview/interviews";
 import { listActiveStages, listActiveStatuses, listActiveMeetingTypes } from "@/lib/interview/config";
 import { NewInterviewForm } from "./new-interview-form";
 import type { InterviewFormValues } from "@/app/interview/shared";
@@ -14,11 +14,12 @@ export default async function NewInterviewPage({
   await requireInterviewManager();
   const { applicationId } = await searchParams;
 
-  const [stages, statuses, meetingTypes, callers, prefill] = await Promise.all([
+  const [stages, statuses, meetingTypes, callers, profiles, prefill] = await Promise.all([
     listActiveStages(),
     listActiveStatuses(),
     listActiveMeetingTypes(),
     listCallers(),
+    listAssignableProfiles(),
     applicationId ? getApplicationPrefill(applicationId) : Promise.resolve(null),
   ]);
 
@@ -28,6 +29,7 @@ export default async function NewInterviewPage({
         companyName: prefill.companyName,
         jobDescription: prefill.jobDescription,
         jobPostLink: prefill.jobPostLink ?? "",
+        profileId: prefill.profileId ?? "",
       }
     : undefined;
 
@@ -51,6 +53,7 @@ export default async function NewInterviewPage({
           statuses={statuses.map(toOption)}
           meetingTypes={meetingTypes.map(toOption)}
           callers={callers.map((c) => ({ id: c.id, label: c.name }))}
+          profiles={profiles.map((p) => ({ id: p.id, label: p.name }))}
         />
       </div>
     </InterviewShell>

@@ -165,6 +165,16 @@ describe("interviews (integration)", () => {
     expect(copy?.referenceFiles).toHaveLength(0);
   });
 
+  it("honors an explicitly chosen profile at creation", async () => {
+    const profileId = await createTestProfile();
+    try {
+      const id = await createInterview(managerId, { ...baseInput(), profileId });
+      expect((await getInterview(manager, id))?.profile?.id).toBe(profileId);
+    } finally {
+      await deleteTestProfile(profileId);
+    }
+  });
+
   it("assigns, changes, and clears the candidate profile", async () => {
     const id = await createInterview(managerId, baseInput());
     const profileId = await createTestProfile();

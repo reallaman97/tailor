@@ -15,6 +15,7 @@ export function NewInterviewForm({
   statuses,
   meetingTypes,
   callers,
+  profiles,
 }: {
   initialValues?: Partial<InterviewFormValues>;
   applicationId?: string;
@@ -23,6 +24,7 @@ export function NewInterviewForm({
   statuses: Option[];
   meetingTypes: Option[];
   callers: Option[];
+  profiles: Option[];
 }) {
   const [state, formAction, pending] = useActionState(createInterviewAction, undefined);
   const values: InterviewFormValues = {
@@ -45,6 +47,8 @@ export function NewInterviewForm({
         statuses={statuses}
         meetingTypes={meetingTypes}
         callers={callers}
+        profiles={profiles}
+        showProfile
       />
 
       <div className="flex items-center gap-3">

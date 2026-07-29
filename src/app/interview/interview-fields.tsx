@@ -21,6 +21,8 @@ export function InterviewFields({
   statuses,
   meetingTypes,
   callers,
+  profiles,
+  showProfile = false,
   disabled,
 }: {
   values: InterviewFormValues;
@@ -28,6 +30,9 @@ export function InterviewFields({
   statuses: Option[];
   meetingTypes: Option[];
   callers: Option[];
+  profiles?: Option[];
+  /** Render the candidate-profile picker (create form only; edit uses the inline control). */
+  showProfile?: boolean;
   disabled?: boolean;
 }) {
   return (
@@ -69,6 +74,11 @@ export function InterviewFields({
       </Section>
 
       <Section title={SECTION_LABELS.people}>
+        {showProfile && (
+          <FormField label="Candidate Profile" htmlFor="profileId" hint="The candidate this interview is for.">
+            <OptionSelect id="profileId" name="profileId" value={values.profileId} options={profiles ?? []} placeholder="No candidate profile" disabled={disabled} />
+          </FormField>
+        )}
         <FormField label="Caller" htmlFor="callerId" hint="The assigned caller account.">
           <OptionSelect id="callerId" name="callerId" value={values.callerId} options={callers} placeholder="Unassigned" disabled={disabled} />
         </FormField>

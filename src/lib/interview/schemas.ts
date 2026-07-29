@@ -55,6 +55,7 @@ const interviewCoreSchema = z.object({
   statusId: z.string().optional(),
   meetingTypeId: z.string().optional(),
   callerId: z.string().optional(),
+  profileId: z.string().optional(),
   meta: metaSchema,
 });
 

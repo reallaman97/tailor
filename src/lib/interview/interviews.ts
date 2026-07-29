@@ -160,7 +160,7 @@ export type InterviewWriteInput = {
   meta: Record<string, string | number>;
 };
 
-export type CreateInterviewInput = InterviewWriteInput & { applicationId?: string };
+export type CreateInterviewInput = InterviewWriteInput & { applicationId?: string; profileId?: string };
 
 function writeData(input: InterviewWriteInput) {
   return {
@@ -185,10 +185,14 @@ export async function createInterview(createdById: string, input: CreateIntervie
   const callerId = emptyToNull(input.callerId);
   if (callerId) await assertCallerValid(callerId);
 
-  // Derive the profile from the linked application so the (login-gated) Profile
-  // view and any attached resume stay anchored to the same candidate record.
-  let profileId: string | null = null;
-  if (input.applicationId) {
+  // Use the explicitly-chosen profile if provided; otherwise fall back to the
+  // linked application's profile so the (login-gated) Profile view and any
+  // attached resume stay anchored to the same candidate record.
+  let profileId: string | null = emptyToNull(input.profileId);
+  if (profileId) {
+    const exists = await db.profile.findUnique({ where: { id: profileId }, select: { id: true } });
+    if (!exists) profileId = null;
+  } else if (input.applicationId) {
     const application = await db.resume.findUnique({
       where: { id: input.applicationId },
       select: { profileId: true },
@@ -568,10 +572,11 @@ export async function getApplicationPrefill(applicationId: string): Promise<{
   jobTitle: string;
   jobDescription: string;
   jobPostLink: string | null;
+  profileId: string | null;
 } | null> {
   const resume = await db.resume.findUnique({
     where: { id: applicationId },
-    select: { companyName: true, jobTitle: true, jobDescription: true, jobLink: true },
+    select: { companyName: true, jobTitle: true, jobDescription: true, jobLink: true, profileId: true },
   });
   if (!resume) return null;
   return {
@@ -579,6 +584,7 @@ export async function getApplicationPrefill(applicationId: string): Promise<{
     jobTitle: resume.jobTitle,
     jobDescription: resume.jobDescription,
     jobPostLink: resume.jobLink,
+    profileId: resume.profileId,
   };
 }
 

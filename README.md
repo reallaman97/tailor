@@ -63,6 +63,23 @@ Create the first superadmin (accounts otherwise start unapproved and can't log i
 npx tsx scripts/create-superadmin.ts
 ```
 
+### One-command setup (schema + config + superadmin)
+
+`npm run setup` deploys the schema, seeds the config singletons (settings +
+interview stages/statuses/meeting types), and creates a superadmin — all
+idempotent, so it's safe to re-run.
+
+```bash
+SUPERADMIN_EMAIL=you@example.com SUPERADMIN_PASSWORD='a-strong-password' npm run setup
+```
+
+It runs `prisma db push` (which syncs the DB directly to `schema.prisma`) then
+[`scripts/setup.ts`](scripts/setup.ts). On **Vercel**, the `vercel-build` script
+runs this automatically before `next build`, so every deploy provisions the
+database and admin from the environment variables — no manual step. (Set
+`SUPERADMIN_*`, `DATABASE_URL`, `MASTER_KEY`, and `AUTH_SECRET` in the Vercel
+project.)
+
 ### Environment
 
 All server config is declared and validated in

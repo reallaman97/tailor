@@ -68,6 +68,7 @@ export default async function InterviewDetailPage({ params }: { params: Promise<
     statusId: detail.status?.id ?? "",
     meetingTypeId: detail.meetingType?.id ?? "",
     callerId: detail.caller?.id ?? "",
+    profileId: detail.profileId ?? "",
     meta: Object.fromEntries(Object.entries(detail.meta).map(([k, v]) => [k, v == null ? "" : String(v)])),
   };
 

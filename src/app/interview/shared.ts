@@ -21,6 +21,7 @@ export type InterviewFormValues = {
   statusId: string;
   meetingTypeId: string;
   callerId: string;
+  profileId: string;
   meta: Record<string, string>;
 };
 
@@ -37,6 +38,7 @@ export const EMPTY_INTERVIEW_VALUES: InterviewFormValues = {
   statusId: "",
   meetingTypeId: "",
   callerId: "",
+  profileId: "",
   meta: {},
 };
 
@@ -70,6 +72,7 @@ export function readInterviewValues(formData: FormData): InterviewFormValues {
     statusId: str(formData, "statusId"),
     meetingTypeId: str(formData, "meetingTypeId"),
     callerId: str(formData, "callerId"),
+    profileId: str(formData, "profileId"),
     meta,
   };
 }
