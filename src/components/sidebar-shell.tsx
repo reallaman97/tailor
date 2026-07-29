@@ -46,6 +46,8 @@ export function SidebarShell({
     if (href === "/resumes") {
       return pathname === "/resumes" || (pathname?.startsWith("/resumes/") && !pathname.startsWith("/resumes/new"));
     }
+    // "/admin" is the panel landing; its sub-pages belong to Users/Settings/Profiles.
+    if (href === "/admin") return pathname === "/admin";
     // "/interview" (Calendar) is the index: keep it lit on the calendar and on
     // interview detail pages, but not on the sibling sections that have their
     // own nav items (list / new / settings).

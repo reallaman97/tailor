@@ -1,5 +1,9 @@
 import { db } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
+import { unwrapDek } from "@/lib/crypto/envelope";
+import { decryptField } from "@/lib/profile/crypto";
 import { readMetaValues, type MetaValues } from "@/lib/interview/fields";
+import { getProfileNames } from "@/lib/profile/personal-info";
 import { getResumeFieldsForResume } from "@/lib/profile/resume-fields";
 import { decryptTailoredContent } from "@/lib/tailoring/tailor-resume";
 import { buildResumeDocument } from "@/lib/export/build-document";
@@ -56,6 +60,8 @@ export type InterviewSummary = {
   stage: { id: string; label: string } | null;
   status: { id: string; label: string; color: string } | null;
   caller: { id: string; name: string } | null;
+  /** The candidate profile this interview is for (name decrypted). */
+  profile: { id: string; name: string } | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -99,6 +105,7 @@ const SUMMARY_SELECT = {
   scheduledAt: true,
   createdAt: true,
   updatedAt: true,
+  profileId: true,
   stage: { select: { id: true, label: true } },
   status: { select: { id: true, label: true, color: true } },
   caller: { select: { id: true, username: true } },
@@ -111,12 +118,14 @@ type SummaryRow = {
   scheduledAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  profileId: string | null;
   stage: { id: string; label: string } | null;
   status: { id: string; label: string; color: string } | null;
   caller: { id: string; username: string } | null;
 };
 
-function toSummary(row: SummaryRow): InterviewSummary {
+/** Maps a row to a summary. `profileNames` resolves the (encrypted) profile name; missing → "Unnamed profile". */
+function toSummary(row: SummaryRow, profileNames?: Map<string, string>): InterviewSummary {
   return {
     id: row.id,
     jobTitle: row.jobTitle,
@@ -125,6 +134,9 @@ function toSummary(row: SummaryRow): InterviewSummary {
     stage: row.stage,
     status: row.status,
     caller: row.caller ? { id: row.caller.id, name: row.caller.username } : null,
+    profile: row.profileId
+      ? { id: row.profileId, name: profileNames?.get(row.profileId) ?? "Unnamed profile" }
+      : null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -250,7 +262,10 @@ export async function listInterviews(
     orderBy: [{ scheduledAt: "desc" }, { createdAt: "desc" }],
     select: SUMMARY_SELECT,
   });
-  return rows.map(toSummary);
+  const profileNames = await getProfileNames(
+    [...new Set(rows.map((r) => r.profileId).filter((id): id is string => id !== null))]
+  );
+  return rows.map((r) => toSummary(r, profileNames));
 }
 
 export async function getInterview(access: InterviewAccess, id: string): Promise<InterviewDetail | null> {
@@ -282,8 +297,10 @@ export async function getInterview(access: InterviewAccess, id: string): Promise
   });
   if (!row) return null;
 
+  const profileNames = row.profileId ? await getProfileNames([row.profileId]) : undefined;
+
   return {
-    ...toSummary(row),
+    ...toSummary(row, profileNames),
     jobDescription: row.jobDescription,
     jobPostLink: row.jobPostLink,
     salaryRange: row.salaryRange,
@@ -327,6 +344,58 @@ export async function softDeleteInterview(id: string): Promise<void> {
   if (result.count === 0) throw new InterviewNotFoundError();
 }
 
+/**
+ * Creates a new interview copying another's editable fields (core fields, config
+ * FKs, caller, application/profile links, and meta). Comments, reference files,
+ * and the attached resume are NOT copied — a duplicate starts a fresh record.
+ */
+export async function duplicateInterview(createdById: string, id: string): Promise<string> {
+  const src = await db.interview.findFirst({
+    where: { id, deletedAt: null },
+    select: {
+      jobTitle: true,
+      companyName: true,
+      jobDescription: true,
+      jobPostLink: true,
+      salaryRange: true,
+      scheduledAt: true,
+      meetingLink: true,
+      interviewerInfo: true,
+      stageId: true,
+      statusId: true,
+      meetingTypeId: true,
+      callerId: true,
+      applicationId: true,
+      profileId: true,
+      meta: true,
+    },
+  });
+  if (!src) throw new InterviewNotFoundError();
+
+  const copy = await db.interview.create({
+    data: {
+      createdById,
+      jobTitle: src.jobTitle,
+      companyName: src.companyName,
+      jobDescription: src.jobDescription,
+      jobPostLink: src.jobPostLink,
+      salaryRange: src.salaryRange,
+      scheduledAt: src.scheduledAt,
+      meetingLink: src.meetingLink,
+      interviewerInfo: src.interviewerInfo,
+      stageId: src.stageId,
+      statusId: src.statusId,
+      meetingTypeId: src.meetingTypeId,
+      callerId: src.callerId,
+      applicationId: src.applicationId,
+      profileId: src.profileId,
+      meta: (src.meta ?? {}) as Prisma.InputJsonValue,
+    },
+    select: { id: true },
+  });
+  return copy.id;
+}
+
 export async function assignCaller(id: string, callerId: string | null): Promise<void> {
   if (callerId) await assertCallerValid(callerId);
   const result = await db.interview.updateMany({
@@ -334,6 +403,28 @@ export async function assignCaller(id: string, callerId: string | null): Promise
     data: { callerId },
   });
   if (result.count === 0) throw new InterviewNotFoundError();
+}
+
+/** Set (or clear, with null) the candidate profile this interview is for. */
+export async function setInterviewProfile(id: string, profileId: string | null): Promise<void> {
+  if (profileId) {
+    const exists = await db.profile.findUnique({ where: { id: profileId }, select: { id: true } });
+    if (!exists) throw new InterviewNotFoundError();
+  }
+  const result = await db.interview.updateMany({
+    where: { id, deletedAt: null },
+    data: { profileId },
+  });
+  if (result.count === 0) throw new InterviewNotFoundError();
+}
+
+/** Candidate profiles a manager can pick from when assigning one to an interview. */
+export async function listAssignableProfiles(): Promise<{ id: string; name: string }[]> {
+  const rows = await db.profile.findMany({
+    select: { id: true, fullNameEnc: true, encryptedDek: true },
+    orderBy: { createdAt: "asc" },
+  });
+  return rows.map((p) => ({ id: p.id, name: decryptField(unwrapDek(p.encryptedDek), p.fullNameEnc) }));
 }
 
 // ── Status + comments (caller-or-manager, scoped) ──────

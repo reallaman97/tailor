@@ -8,7 +8,7 @@ import { CalendarIcon, PlusIcon } from "@/components/icons";
 import { canManageInterviews, listInterviews, listCallers } from "@/lib/interview/interviews";
 import { listActiveStatuses, listActiveStages } from "@/lib/interview/config";
 import { getInterviewTimezone } from "@/lib/settings";
-import { InterviewsTable } from "./interviews-table";
+import { InterviewsView } from "./interviews-view";
 
 export default async function InterviewListPage() {
   const access = await requireInterviewAccess();
@@ -52,7 +52,7 @@ export default async function InterviewListPage() {
             }
           />
         ) : (
-          <InterviewsTable
+          <InterviewsView
             interviews={interviews}
             timezone={timezone}
             isManager={isManager}

@@ -7,6 +7,7 @@ import {
   updateInterview,
   softDeleteInterview,
   assignCaller,
+  setInterviewProfile,
   updateStatus,
   addComment,
   addReferenceFile,
@@ -92,6 +93,20 @@ export async function assignCallerAction(id: string, callerId: string): Promise<
   } catch (err) {
     if (err instanceof InvalidCallerError) return { error: err.message };
     if (err instanceof InterviewNotFoundError) return { error: "Interview not found" };
+    throw err;
+  }
+  revalidateDetail(id);
+  return {};
+}
+
+// ── Assign candidate profile (manager) ─────────────────
+
+export async function assignProfileAction(id: string, profileId: string): Promise<Result> {
+  await requireInterviewManager();
+  try {
+    await setInterviewProfile(id, profileId || null);
+  } catch (err) {
+    if (err instanceof InterviewNotFoundError) return { error: "Interview or profile not found" };
     throw err;
   }
   revalidateDetail(id);

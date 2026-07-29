@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo } from "react";
 import {
   useReactTable,
@@ -179,10 +180,17 @@ export function UsersTable({
       {
         id: "actions",
         header: "Actions",
-        size: 90,
+        size: 120,
         enableResizing: false,
         cell: ({ row }) => (
           <div className="flex items-center justify-end gap-1">
+            <Link
+              href={`/admin/users/${row.original.id}`}
+              aria-label={`Edit ${row.original.email}`}
+              className="rounded-md px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10"
+            >
+              Edit
+            </Link>
             {row.original.id !== adminId && (
               <ConfirmDialog
                 title="Delete this user?"

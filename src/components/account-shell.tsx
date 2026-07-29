@@ -1,9 +1,10 @@
 "use client";
 
 import { SidebarShell, type ShellNavLink } from "@/components/sidebar-shell";
-import { UserIcon, SettingsIcon, UsersIcon, FolderIcon } from "@/components/icons";
+import { UserIcon, SettingsIcon, UsersIcon, FolderIcon, ShieldIcon } from "@/components/icons";
 
 const MY_ACCOUNT: ShellNavLink = { href: "/account", label: "My Account", icon: UserIcon };
+const ADMIN: ShellNavLink = { href: "/admin", label: "Admin Panel", icon: ShieldIcon };
 const SETTINGS: ShellNavLink = { href: "/admin/settings", label: "Settings", icon: SettingsIcon };
 const USERS: ShellNavLink = { href: "/admin/users", label: "Users", icon: UsersIcon };
 const PROFILES: ShellNavLink = { href: "/admin/profiles", label: "Profiles", icon: FolderIcon };
@@ -23,7 +24,7 @@ export function AccountShell({
   wide?: boolean;
   children: React.ReactNode;
 }) {
-  const links = isSuperAdmin ? [MY_ACCOUNT, SETTINGS, USERS, PROFILES] : [MY_ACCOUNT];
+  const links = isSuperAdmin ? [MY_ACCOUNT, ADMIN, USERS, PROFILES, SETTINGS] : [MY_ACCOUNT];
 
   return (
     <SidebarShell toolLabel="My Account" toolHref="/account" links={links} wide={wide}>

@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TrashIcon, UserIcon } from "@/components/icons";
-import { canManageInterviews, getInterview, listCallers } from "@/lib/interview/interviews";
+import { canManageInterviews, getInterview, listCallers, listAssignableProfiles } from "@/lib/interview/interviews";
 import { listActiveStages, listActiveStatuses, listActiveMeetingTypes } from "@/lib/interview/config";
 import { getInterviewTimezone } from "@/lib/settings";
 import { utcToDatetimeLocal } from "@/lib/interview/timezone";
@@ -17,6 +17,7 @@ import { DetailsForm } from "./details-form";
 import { InterviewReadView } from "./interview-read-view";
 import { StatusControl } from "./status-control";
 import { CallerControl } from "./caller-control";
+import { ProfileControl } from "./profile-control";
 import { CommentThread } from "./comment-thread";
 import { ReferenceFiles } from "./reference-files";
 import { ResumeControl } from "./resume-control";
@@ -36,12 +37,13 @@ export default async function InterviewDetailPage({ params }: { params: Promise<
   const detail = await getInterview(access, id);
   if (!detail) notFound();
 
-  const [timezone, activeStages, activeStatuses, activeMeetingTypes, callers] = await Promise.all([
+  const [timezone, activeStages, activeStatuses, activeMeetingTypes, callers, assignableProfiles] = await Promise.all([
     getInterviewTimezone(),
     listActiveStages(),
     listActiveStatuses(),
     listActiveMeetingTypes(),
     isManager ? listCallers() : Promise.resolve([]),
+    isManager ? listAssignableProfiles() : Promise.resolve([]),
   ]);
 
   const toOption = (o: { id: string; label: string }) => ({ id: o.id, label: o.label });
@@ -76,33 +78,52 @@ export default async function InterviewDetailPage({ params }: { params: Promise<
           title={detail.jobTitle}
           description={`${detail.companyName}${detail.createdByName ? ` · created by ${detail.createdByName}` : ""}`}
           action={
-            <div className="flex items-center gap-2">
-              {detail.profileId && (
-                <Link href={`/interview/${id}/profile`} className={buttonVariants("outline", "sm")}>
-                  <UserIcon className="size-4" />
-                  Profile
-                </Link>
-              )}
-              {isManager && (
-                <ConfirmDialog
-                  title="Delete this interview?"
-                  description="It will be removed from the calendar and lists. This can be recovered by an admin."
-                  confirmLabel="Delete"
-                  triggerVariant="outline"
-                  triggerSize="sm"
-                  triggerLabel="Delete interview"
-                  triggerContent={
-                    <span className="flex items-center gap-1.5">
-                      <TrashIcon className="size-4" />
-                      Delete
-                    </span>
-                  }
-                  action={deleteInterviewAction.bind(null, id)}
-                />
-              )}
-            </div>
+            isManager ? (
+              <ConfirmDialog
+                title="Delete this interview?"
+                description="It will be removed from the calendar and lists. This can be recovered by an admin."
+                confirmLabel="Delete"
+                triggerVariant="outline"
+                triggerSize="sm"
+                triggerLabel="Delete interview"
+                triggerContent={
+                  <span className="flex items-center gap-1.5">
+                    <TrashIcon className="size-4" />
+                    Delete
+                  </span>
+                }
+                action={deleteInterviewAction.bind(null, id)}
+              />
+            ) : undefined
           }
         />
+
+        {/* Candidate profile — shown up top so it's the first thing you see. */}
+        <Card>
+          <CardContent className="flex flex-wrap items-center justify-between gap-4 pt-6">
+            <div className="flex items-center gap-3">
+              <span className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <UserIcon className="size-5" />
+              </span>
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Candidate profile</p>
+                {isManager ? (
+                  <ProfileControl interviewId={id} currentProfileId={detail.profileId} profiles={assignableProfiles.map((p) => ({ id: p.id, label: p.name }))} />
+                ) : (
+                  <p className="text-base font-semibold text-foreground">
+                    {detail.profile ? detail.profile.name : "No candidate profile linked"}
+                  </p>
+                )}
+              </div>
+            </div>
+            {detail.profileId && (
+              <Link href={`/interview/${id}/profile`} className={buttonVariants("outline", "sm")}>
+                <UserIcon className="size-4" />
+                View full profile
+              </Link>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardContent className="flex flex-wrap items-end gap-6 pt-6">

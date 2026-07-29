@@ -16,8 +16,10 @@ const password = z
   .min(8, "Password must be at least 8 characters")
   .max(128, "Password must be at most 128 characters");
 
-// Reusable single-field schemas for the My Account page.
+// Reusable single-field schemas (My Account page, admin user management).
 export const usernameSchema = username;
+export const emailSchema = email;
+export const passwordSchema = password;
 
 export const changePasswordSchema = z
   .object({

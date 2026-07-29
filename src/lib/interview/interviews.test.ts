@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "@/lib/db";
-import { createTestUser, deleteTestUser } from "@/lib/profile/test-helpers";
+import { createTestUser, deleteTestUser, createTestProfile, deleteTestProfile } from "@/lib/profile/test-helpers";
 import type { UserRole } from "@/generated/prisma/client";
 import {
   createInterview,
@@ -8,7 +8,10 @@ import {
   listInterviews,
   updateInterview,
   softDeleteInterview,
+  duplicateInterview,
   assignCaller,
+  setInterviewProfile,
+  listAssignableProfiles,
   updateStatus,
   addComment,
   addReferenceFile,
@@ -142,6 +145,46 @@ describe("interviews (integration)", () => {
     // Unassign.
     await assignCaller(id, null);
     expect((await getInterview(manager, id))?.caller).toBeNull();
+  });
+
+  it("duplicates an interview's editable fields into a fresh record (no comments/files)", async () => {
+    const id = await createInterview(managerId, baseInput({ callerId, statusId: "status_scheduled", stageId: "stage_final" }));
+    await addComment(manager, id, "original comment");
+    await addReferenceFile(id, managerId, { data: Buffer.from("x"), filename: "a.pdf", mimeType: "application/pdf" });
+
+    const copyId = await duplicateInterview(managerId, id);
+    expect(copyId).not.toBe(id);
+
+    const copy = await getInterview(manager, copyId);
+    expect(copy).toMatchObject({ jobTitle: "Backend Engineer", companyName: "Acme Corp" });
+    expect(copy?.status?.label).toBe("Scheduled");
+    expect(copy?.stage?.label).toBe("Final");
+    expect(copy?.caller?.id).toBe(callerId);
+    // A duplicate starts clean.
+    expect(copy?.comments).toHaveLength(0);
+    expect(copy?.referenceFiles).toHaveLength(0);
+  });
+
+  it("assigns, changes, and clears the candidate profile", async () => {
+    const id = await createInterview(managerId, baseInput());
+    const profileId = await createTestProfile();
+
+    try {
+      await setInterviewProfile(id, profileId);
+      const withProfile = await getInterview(manager, id);
+      expect(withProfile?.profile?.id).toBe(profileId);
+      expect(withProfile?.profile?.name).toBe("Test User");
+
+      // The profile shows up in the assignable list.
+      expect((await listAssignableProfiles()).some((p) => p.id === profileId)).toBe(true);
+
+      // A bad id is rejected; null clears it.
+      await expect(setInterviewProfile(id, "does-not-exist")).rejects.toBeTruthy();
+      await setInterviewProfile(id, null);
+      expect((await getInterview(manager, id))?.profile).toBeNull();
+    } finally {
+      await deleteTestProfile(profileId);
+    }
   });
 
   it("soft-deletes an interview so it disappears from reads", async () => {
