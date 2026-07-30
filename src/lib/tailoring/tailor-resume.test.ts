@@ -18,7 +18,8 @@ describe("sanitizeTailoredContent (pure)", () => {
           { entryId: "real-1", bullets: ["kept"] },
           { entryId: "hallucinated-id", bullets: ["dropped"] },
         ],
-        orderedSkills: [],
+        skillCategories: [],
+        orderedCertifications: [],
       },
       new Set(["real-1"]),
       []
@@ -26,23 +27,35 @@ describe("sanitizeTailoredContent (pure)", () => {
     expect(result.workHistory).toEqual([{ entryId: "real-1", bullets: ["kept"] }]);
   });
 
-  it("drops skills not in the candidate's real skill list, case-insensitively matching kept ones", () => {
+  it("keeps the model's skill categories (ATS expansion allowed) but trims, dedupes, and drops empties", () => {
     const result = sanitizeTailoredContent(
-      { summary: "s", workHistory: [], orderedSkills: ["typescript", "Hallucinated Skill", "PYTHON"] },
+      {
+        summary: "s",
+        workHistory: [],
+        skillCategories: [
+          { category: "Languages", skills: ["TypeScript", " TypeScript ", "Python", ""] },
+          { category: "Empty", skills: ["   "] },
+        ],
+        orderedCertifications: [],
+      },
       new Set(),
-      ["TypeScript", "Python"]
+      []
     );
-    // Preserves the original casing from the candidate's real list, not the model's casing.
-    expect(result.orderedSkills).toEqual(["TypeScript", "Python"]);
+    expect(result.skillCategories).toEqual([{ category: "Languages", skills: ["TypeScript", "Python"] }]);
   });
 
-  it("preserves the model's ordering among kept skills", () => {
+  it("keeps only real certifications, case-insensitively, preserving real casing and model order", () => {
     const result = sanitizeTailoredContent(
-      { summary: "s", workHistory: [], orderedSkills: ["Go", "Rust"] },
+      {
+        summary: "s",
+        workHistory: [],
+        skillCategories: [],
+        orderedCertifications: ["aws certified solutions architect", "Fabricated Cert", "CKA"],
+      },
       new Set(),
-      ["Rust", "Go"]
+      ["CKA", "AWS Certified Solutions Architect"]
     );
-    expect(result.orderedSkills).toEqual(["Go", "Rust"]);
+    expect(result.orderedCertifications).toEqual(["AWS Certified Solutions Architect", "CKA"]);
   });
 });
 

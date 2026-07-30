@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { DecryptedPersonalInfo } from "@/lib/profile/personal-info";
 import type { DecryptedWorkHistoryEntry } from "@/lib/profile/work-history";
 import type { EducationEntry } from "@/lib/profile/education";
+import type { CertificationEntry } from "@/lib/profile/certifications";
 import type { SkillGroupView } from "@/lib/profile/skills";
 
 function Field({ label, value }: { label: string; value: string | null }) {
@@ -19,11 +20,13 @@ export function ProfileView({
   personalInfo,
   workHistory,
   education,
+  certifications = [],
   skillGroups,
 }: {
   personalInfo: DecryptedPersonalInfo;
   workHistory: DecryptedWorkHistoryEntry[];
   education: EducationEntry[];
+  certifications?: CertificationEntry[];
   skillGroups: SkillGroupView[];
 }) {
   return (
@@ -89,6 +92,28 @@ export function ProfileView({
           ))}
         </CardContent>
       </Card>
+
+      {certifications.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Certifications</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {certifications.map((entry) => (
+              <div key={entry.id} className="rounded-lg border border-border p-4">
+                <p className="font-medium text-foreground">{entry.name}</p>
+                {(entry.issuer || entry.issueDate) && (
+                  <p className="text-sm text-muted-foreground">
+                    {entry.issuer ?? ""}
+                    {entry.issuer && entry.issueDate ? " · " : ""}
+                    {entry.issueDate ? formatYearMonth(entry.issueDate) : ""}
+                  </p>
+                )}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

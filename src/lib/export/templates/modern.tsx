@@ -34,6 +34,8 @@ const styles = StyleSheet.create({
   entryLine: { fontSize: 9.5, color: "#333", marginTop: 1 },
   bullet: { fontSize: 9.5, marginTop: 3, marginLeft: 10 },
   paragraph: { fontSize: 9.5, lineHeight: 1.4 },
+  skillLine: { fontSize: 9.5, marginTop: 2 },
+  skillCategory: { fontFamily: "Helvetica-Bold" },
 });
 
 export function ModernResumeTemplate({ data }: { data: ResumeDocument }) {
@@ -54,6 +56,18 @@ export function ModernResumeTemplate({ data }: { data: ResumeDocument }) {
           <View>
             <Text style={styles.sectionHeading}>SUMMARY</Text>
             <Text style={styles.paragraph}>{data.summary}</Text>
+          </View>
+        )}
+
+        {data.skills.length > 0 && (
+          <View>
+            <Text style={styles.sectionHeading}>TECHNICAL SKILLS</Text>
+            {data.skills.map((group, i) => (
+              <Text key={i} style={styles.skillLine}>
+                <Text style={styles.skillCategory}>{group.category}: </Text>
+                {group.skills.join(", ")}
+              </Text>
+            ))}
           </View>
         )}
 
@@ -100,10 +114,21 @@ export function ModernResumeTemplate({ data }: { data: ResumeDocument }) {
           </View>
         )}
 
-        {data.skills.length > 0 && (
+        {data.certifications.length > 0 && (
           <View>
-            <Text style={styles.sectionHeading}>SKILLS</Text>
-            <Text style={styles.paragraph}>{data.skills.join(", ")}</Text>
+            <Text style={styles.sectionHeading}>CERTIFICATIONS</Text>
+            {data.certifications.map((cert, i) => (
+              <View key={i} style={styles.entry}>
+                <Text style={styles.entryTitle}>{cert.name}</Text>
+                {(cert.issuer || cert.issueDate) && (
+                  <Text style={styles.entryLine}>
+                    {cert.issuer ?? ""}
+                    {cert.issuer && cert.issueDate ? " · " : ""}
+                    {cert.issueDate ? formatMonthYear(cert.issueDate) : ""}
+                  </Text>
+                )}
+              </View>
+            ))}
           </View>
         )}
       </Page>

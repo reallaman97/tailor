@@ -13,6 +13,7 @@ const MINIMAL_RESUME_FIELDS: ResumeFields = {
   state: null,
   workHistory: [],
   education: [],
+  certifications: [],
   skills: [],
 };
 

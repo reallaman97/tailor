@@ -4,7 +4,7 @@ import { tailoredContentSchema, type TailoredContent } from "@/lib/tailoring/sch
 import { getOpenAiApiKey } from "@/lib/settings";
 import type { ResumeFields } from "@/lib/profile/resume-fields";
 
-export const TAILORING_PROMPT_VERSION = "tailoring-v1";
+export const TAILORING_PROMPT_VERSION = "tailoring-v2";
 
 // Not cached: the key can change at runtime (a superadmin editing it in
 // Settings), and constructing a client is cheap — no network call happens

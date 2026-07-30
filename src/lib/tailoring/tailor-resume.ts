@@ -7,7 +7,7 @@ import { encryptJson, decryptJson } from "@/lib/profile/crypto";
 import { generateTailoredContent, TAILORING_PROMPT_VERSION } from "@/lib/tailoring/generate";
 import { recordUsageEvent } from "@/lib/tailoring/usage";
 import { getSettings } from "@/lib/settings";
-import type { TailoredContent } from "@/lib/tailoring/schema";
+import type { TailoredContent, StoredTailoredContent } from "@/lib/tailoring/schema";
 
 export class ProfileIncompleteError extends Error {
   constructor() {
@@ -15,26 +15,56 @@ export class ProfileIncompleteError extends Error {
   }
 }
 
+const MAX_SKILLS = 50;
+
 /**
- * Filters the model's output against the candidate's real data: any
- * work-history entryId or skill the model didn't actually receive is
- * dropped rather than trusted, in case structured output still lets
- * something slip through (e.g. a hallucinated id).
+ * Filters the model's output against the candidate's real data:
+ * - work-history entries whose id wasn't given are dropped (guards against a
+ *   hallucinated id breaking the bullet→entry mapping);
+ * - certifications are matched (case-insensitively) to the candidate's real
+ *   certifications — a fabricated one is dropped (the prompt forbids inventing
+ *   certifications);
+ * - skills are deliberately NOT restricted to the profile: the tailoring prompt
+ *   intentionally adds JD-required and ecosystem keywords for ATS coverage. We
+ *   only tidy them (trim, dedupe, drop empties/categories, cap the total).
  */
 export function sanitizeTailoredContent(
   raw: TailoredContent,
   allowedEntryIds: Set<string>,
-  allowedSkills: string[]
+  allowedCertNames: string[]
 ): TailoredContent {
-  const skillByLowercase = new Map(allowedSkills.map((s) => [s.toLowerCase(), s]));
-
-  const orderedSkills = raw.orderedSkills
-    .map((s) => skillByLowercase.get(s.toLowerCase()))
-    .filter((s): s is string => s !== undefined);
-
   const workHistory = raw.workHistory.filter((w) => allowedEntryIds.has(w.entryId));
 
-  return { summary: raw.summary, workHistory, orderedSkills };
+  const seenSkill = new Set<string>();
+  let skillCount = 0;
+  const skillCategories = raw.skillCategories
+    .map((cat) => {
+      const skills: string[] = [];
+      for (const s of cat.skills) {
+        const trimmed = s.trim();
+        if (!trimmed) continue;
+        const key = trimmed.toLowerCase();
+        if (seenSkill.has(key) || skillCount >= MAX_SKILLS) continue;
+        seenSkill.add(key);
+        skills.push(trimmed);
+        skillCount++;
+      }
+      return { category: cat.category.trim(), skills };
+    })
+    .filter((cat) => cat.category.length > 0 && cat.skills.length > 0);
+
+  const certByLower = new Map(allowedCertNames.map((n) => [n.toLowerCase(), n]));
+  const seenCert = new Set<string>();
+  const orderedCertifications: string[] = [];
+  for (const name of raw.orderedCertifications) {
+    const match = certByLower.get(name.trim().toLowerCase());
+    if (match && !seenCert.has(match)) {
+      seenCert.add(match);
+      orderedCertifications.push(match);
+    }
+  }
+
+  return { summary: raw.summary, workHistory, skillCategories, orderedCertifications };
 }
 
 export async function tailorResume(userId: string, resumeId: string): Promise<void> {
@@ -57,8 +87,8 @@ export async function tailorResume(userId: string, resumeId: string): Promise<vo
   });
 
   const allowedEntryIds = new Set(resumeFields.workHistory.map((w) => w.id));
-  const allowedSkills = resumeFields.skills.flatMap((g) => g.skills);
-  const content = sanitizeTailoredContent(result.content, allowedEntryIds, allowedSkills);
+  const allowedCertNames = resumeFields.certifications.map((c) => c.name);
+  const content = sanitizeTailoredContent(result.content, allowedEntryIds, allowedCertNames);
 
   const dek = await getProfileDek(profileId);
   const tailoredContentEnc = encryptJson(dek, content);
@@ -95,17 +125,17 @@ export async function tailorResume(userId: string, resumeId: string): Promise<vo
 export async function decryptTailoredContent(
   profileId: string | null,
   tailoredContentEnc: string | null
-): Promise<TailoredContent | null> {
+): Promise<StoredTailoredContent | null> {
   if (!tailoredContentEnc || !profileId) return null;
   const dek = await getProfileDek(profileId);
-  return decryptJson<TailoredContent>(dek, tailoredContentEnc);
+  return decryptJson<StoredTailoredContent>(dek, tailoredContentEnc);
 }
 
 /** Fetches and decrypts tailored content by resume id, scoped to `userId`. */
 export async function getTailoredContent(
   userId: string,
   resumeId: string
-): Promise<TailoredContent | null> {
+): Promise<StoredTailoredContent | null> {
   const scope = await scopeFilter(userId);
   const resume = await db.resume.findFirst({
     where: { id: resumeId, ...scope },

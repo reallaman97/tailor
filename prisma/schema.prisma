@@ -110,11 +110,12 @@ model Profile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  workHistory WorkHistoryEntry[]
-  education   EducationEntry[]
-  skillGroups SkillGroup[]
-  resumes     Resume[]
-  interviews  Interview[]
+  workHistory    WorkHistoryEntry[]
+  education      EducationEntry[]
+  certifications CertificationEntry[]
+  skillGroups    SkillGroup[]
+  resumes        Resume[]
+  interviews     Interview[]
 }
 
 enum WorkingStyle {
@@ -162,6 +163,20 @@ model EducationEntry {
   startDate   DateTime?
   endDate     DateTime?
   sortOrder   Int       @default(0)
+
+  @@index([profileId])
+}
+
+model CertificationEntry {
+  id        String  @id @default(cuid())
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  // Plaintext, low-sensitivity resume facts (same treatment as EducationEntry).
+  name      String // e.g. "AWS Certified Solutions Architect – Associate"
+  issuer    String? // e.g. "Amazon Web Services"
+  issueDate DateTime? // month/year granularity, stored as UTC-midnight of the 1st
+  sortOrder Int      @default(0)
 
   @@index([profileId])
 }

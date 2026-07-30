@@ -6,10 +6,12 @@ import { listAllUsers } from "@/lib/admin/users";
 import { getPersonalInfo } from "@/lib/profile/personal-info";
 import { listWorkHistory } from "@/lib/profile/work-history";
 import { listEducation } from "@/lib/profile/education";
+import { listCertifications } from "@/lib/profile/certifications";
 import { listSkillGroups } from "@/lib/profile/skills";
 import { PersonalInfoForm } from "./personal-info-form";
 import { WorkHistorySection } from "./work-history-section";
 import { EducationSection } from "./education-section";
+import { CertificationsSection } from "./certifications-section";
 import { SkillsSection } from "./skills-section";
 import { AssignedUsersManager } from "./assigned-users-manager";
 import { AccountShell } from "@/components/account-shell";
@@ -30,10 +32,11 @@ export default async function AdminEditProfilePage({
   });
   if (!profile) notFound();
 
-  const [personalInfo, workHistory, education, skillGroups, users] = await Promise.all([
+  const [personalInfo, workHistory, education, certifications, skillGroups, users] = await Promise.all([
     getPersonalInfo(profileId),
     listWorkHistory(profileId),
     listEducation(profileId),
+    listCertifications(profileId),
     listSkillGroups(profileId),
     listAllUsers(),
   ]);
@@ -63,6 +66,7 @@ export default async function AdminEditProfilePage({
         <PersonalInfoForm profileId={profileId} info={personalInfo} />
         <WorkHistorySection profileId={profileId} entries={workHistory} />
         <EducationSection profileId={profileId} entries={education} />
+        <CertificationsSection profileId={profileId} entries={certifications} />
         <SkillsSection profileId={profileId} groups={skillGroups} />
       </div>
     </AccountShell>

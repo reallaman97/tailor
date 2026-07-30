@@ -1,5 +1,5 @@
 import type { ResumeFields } from "@/lib/profile/resume-fields";
-import type { TailoredContent } from "@/lib/tailoring/schema";
+import type { StoredTailoredContent } from "@/lib/tailoring/schema";
 
 export type ResumeDocument = {
   fullName: string;
@@ -26,7 +26,13 @@ export type ResumeDocument = {
     startDate: string | null;
     endDate: string | null;
   }>;
-  skills: string[];
+  certifications: Array<{
+    name: string;
+    issuer: string | null;
+    issueDate: string | null;
+  }>;
+  /** Skills grouped into categories (ATS-friendly). */
+  skills: Array<{ category: string; skills: string[] }>;
 };
 
 function byStartDateDesc(a: { startDate: string }, b: { startDate: string }): number {
@@ -43,8 +49,48 @@ function byOptionalStartDateDesc(
   return b.startDate.localeCompare(a.startDate);
 }
 
-function defaultSkillOrder(skills: ResumeFields["skills"]): string[] {
-  return skills.flatMap((g) => g.skills);
+/** Skills come from (in priority): tailored categories, legacy flat order, then the profile's own groups. */
+function buildSkills(
+  resumeFields: ResumeFields,
+  tailored: StoredTailoredContent | null
+): ResumeDocument["skills"] {
+  if (tailored?.skillCategories && tailored.skillCategories.length > 0) {
+    return tailored.skillCategories.filter((c) => c.skills.length > 0);
+  }
+  if (tailored?.orderedSkills && tailored.orderedSkills.length > 0) {
+    return [{ category: "Skills", skills: tailored.orderedSkills }];
+  }
+  return resumeFields.skills.map((g) => ({ category: g.category, skills: g.skills }));
+}
+
+/**
+ * Certifications always come from the real profile — the tailored
+ * `orderedCertifications` only reprioritizes them (matched by name). Any real
+ * certification not named by the model is kept, appended after the ordered ones,
+ * so nothing real is silently dropped and nothing fabricated is added.
+ */
+function buildCertifications(
+  resumeFields: ResumeFields,
+  orderedNames: string[] | undefined
+): ResumeDocument["certifications"] {
+  const certs = resumeFields.certifications;
+  if (!orderedNames || orderedNames.length === 0) return certs;
+
+  const byLower = new Map(certs.map((c) => [c.name.toLowerCase(), c]));
+  const used = new Set<string>();
+  const ordered: ResumeDocument["certifications"] = [];
+  for (const name of orderedNames) {
+    const key = name.toLowerCase();
+    const cert = byLower.get(key);
+    if (cert && !used.has(key)) {
+      used.add(key);
+      ordered.push(cert);
+    }
+  }
+  for (const cert of certs) {
+    if (!used.has(cert.name.toLowerCase())) ordered.push(cert);
+  }
+  return ordered;
 }
 
 /**
@@ -58,7 +104,7 @@ function defaultSkillOrder(skills: ResumeFields["skills"]): string[] {
  */
 export function buildResumeDocument(
   resumeFields: ResumeFields,
-  tailoredContent: TailoredContent | null
+  tailoredContent: StoredTailoredContent | null
 ): ResumeDocument {
   const tailoredBulletsByEntryId = new Map(
     (tailoredContent?.workHistory ?? []).map((w) => [w.entryId, w.bullets])
@@ -79,11 +125,6 @@ export function buildResumeDocument(
 
   const education = [...resumeFields.education].sort(byOptionalStartDateDesc);
 
-  const skills =
-    tailoredContent && tailoredContent.orderedSkills.length > 0
-      ? tailoredContent.orderedSkills
-      : defaultSkillOrder(resumeFields.skills);
-
   return {
     fullName: resumeFields.fullName,
     contactEmail: resumeFields.contactEmail,
@@ -94,6 +135,7 @@ export function buildResumeDocument(
     summary: tailoredContent?.summary ?? resumeFields.professionalSummary,
     workHistory,
     education,
-    skills,
+    certifications: buildCertifications(resumeFields, tailoredContent?.orderedCertifications),
+    skills: buildSkills(resumeFields, tailoredContent),
   };
 }

@@ -78,6 +78,14 @@ export const educationEntrySchema = z.object({
 
 export type EducationEntryInput = z.infer<typeof educationEntrySchema>;
 
+export const certificationEntrySchema = z.object({
+  name: z.string().trim().min(1, "Certification name is required"),
+  issuer: optionalTrimmed,
+  issueDate: yearMonthOptional,
+});
+
+export type CertificationEntryInput = z.infer<typeof certificationEntrySchema>;
+
 export const skillGroupSchema = z.object({
   category: z.string().trim().min(1, "Category name is required"),
   skills: z

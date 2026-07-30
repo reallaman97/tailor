@@ -10,6 +10,7 @@ import { canManageInterviews, getInterview } from "@/lib/interview/interviews";
 import { getPersonalInfo } from "@/lib/profile/personal-info";
 import { listWorkHistory } from "@/lib/profile/work-history";
 import { listEducation } from "@/lib/profile/education";
+import { listCertifications } from "@/lib/profile/certifications";
 import { listSkillGroups } from "@/lib/profile/skills";
 import { ProfileView } from "@/components/profile-view";
 
@@ -44,10 +45,11 @@ export default async function InterviewProfilePage({ params }: { params: Promise
     );
   }
 
-  const [personalInfo, workHistory, education, skillGroups] = await Promise.all([
+  const [personalInfo, workHistory, education, certifications, skillGroups] = await Promise.all([
     getPersonalInfo(detail.profileId),
     listWorkHistory(detail.profileId),
     listEducation(detail.profileId),
+    listCertifications(detail.profileId),
     listSkillGroups(detail.profileId),
   ]);
 
@@ -65,6 +67,7 @@ export default async function InterviewProfilePage({ params }: { params: Promise
             personalInfo={personalInfo}
             workHistory={workHistory}
             education={education}
+            certifications={certifications}
             skillGroups={skillGroups}
           />
         ) : (

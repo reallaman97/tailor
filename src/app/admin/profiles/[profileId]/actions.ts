@@ -7,8 +7,14 @@ import {
   personalInfoSchema,
   workHistoryEntrySchema,
   educationEntrySchema,
+  certificationEntrySchema,
   skillGroupSchema,
 } from "@/lib/profile/schemas";
+import {
+  createCertificationEntry,
+  updateCertificationEntry,
+  deleteCertificationEntry,
+} from "@/lib/profile/certifications";
 import { savePersonalInfo } from "@/lib/profile/personal-info";
 import {
   createWorkHistoryEntry,
@@ -126,6 +132,41 @@ export async function updateEducationAction(
 export async function deleteEducationAction(profileId: string, entryId: string): Promise<void> {
   await requireSuperAdmin();
   await deleteEducationEntry(profileId, entryId);
+  revalidatePath(`/admin/profiles/${profileId}`);
+}
+
+export async function createCertificationAction(
+  profileId: string,
+  _prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  await requireSuperAdmin();
+  const parsed = certificationEntrySchema.safeParse(formDataToObject(formData));
+  if (!parsed.success) return { error: firstIssue(parsed.error) };
+
+  await createCertificationEntry(profileId, parsed.data);
+  revalidatePath(`/admin/profiles/${profileId}`);
+  return { success: true };
+}
+
+export async function updateCertificationAction(
+  profileId: string,
+  entryId: string,
+  _prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  await requireSuperAdmin();
+  const parsed = certificationEntrySchema.safeParse(formDataToObject(formData));
+  if (!parsed.success) return { error: firstIssue(parsed.error) };
+
+  await updateCertificationEntry(profileId, entryId, parsed.data);
+  revalidatePath(`/admin/profiles/${profileId}`);
+  return { success: true };
+}
+
+export async function deleteCertificationAction(profileId: string, entryId: string): Promise<void> {
+  await requireSuperAdmin();
+  await deleteCertificationEntry(profileId, entryId);
   revalidatePath(`/admin/profiles/${profileId}`);
 }
 

@@ -47,6 +47,8 @@ const styles = StyleSheet.create({
   entryLine: { fontSize: 9.5, fontFamily: "Times-Italic", color: "#333", marginTop: 1 },
   bullet: { fontSize: 9.5, marginTop: 3, marginLeft: 12 },
   paragraph: { fontSize: 9.5, lineHeight: 1.45, textAlign: "center" },
+  skillRow: { flexDirection: "row", fontSize: 9.5, marginTop: 2 },
+  skillCategory: { fontFamily: "Times-Bold" },
 });
 
 export function ClassicResumeTemplate({ data }: { data: ResumeDocument }) {
@@ -68,6 +70,20 @@ export function ClassicResumeTemplate({ data }: { data: ResumeDocument }) {
           <View>
             <Text style={styles.sectionHeading}>SUMMARY</Text>
             <Text style={styles.paragraph}>{data.summary}</Text>
+          </View>
+        )}
+
+        {data.skills.length > 0 && (
+          <View>
+            <Text style={styles.sectionHeading}>TECHNICAL SKILLS</Text>
+            {data.skills.map((group, i) => (
+              <View key={i} style={styles.skillRow}>
+                <Text>
+                  <Text style={styles.skillCategory}>{group.category}: </Text>
+                  {group.skills.join(", ")}
+                </Text>
+              </View>
+            ))}
           </View>
         )}
 
@@ -118,10 +134,18 @@ export function ClassicResumeTemplate({ data }: { data: ResumeDocument }) {
           </View>
         )}
 
-        {data.skills.length > 0 && (
+        {data.certifications.length > 0 && (
           <View>
-            <Text style={styles.sectionHeading}>SKILLS</Text>
-            <Text style={styles.paragraph}>{data.skills.join(" • ")}</Text>
+            <Text style={styles.sectionHeading}>CERTIFICATIONS</Text>
+            {data.certifications.map((cert, i) => (
+              <View key={i} style={styles.entry}>
+                <View style={styles.entryTitleRow}>
+                  <Text style={styles.entryTitle}>{cert.name}</Text>
+                  {cert.issueDate && <Text style={styles.entryDate}>{formatMonthYear(cert.issueDate)}</Text>}
+                </View>
+                {cert.issuer && <Text style={styles.entryLine}>{cert.issuer}</Text>}
+              </View>
+            ))}
           </View>
         )}
       </Page>

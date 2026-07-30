@@ -32,7 +32,8 @@ const SAMPLE_DOCUMENT: ResumeDocument = {
       endDate: "2018-05-01",
     },
   ],
-  skills: ["TypeScript", "Python", "Docker"],
+  certifications: [{ name: "AWS Certified Solutions Architect", issuer: "Amazon Web Services", issueDate: "2022-06-01" }],
+  skills: [{ category: "Languages", skills: ["TypeScript", "Python", "Docker"] }],
 };
 
 describe("renderResumePdf", () => {
@@ -60,8 +61,10 @@ describe("renderResumePdf", () => {
       "Built a payments service handling 10k requests/day",
       "EDUCATION",
       "State University",
-      "SKILLS",
+      "TECHNICAL SKILLS",
       "TypeScript, Python, Docker",
+      "CERTIFICATIONS",
+      "AWS Certified Solutions Architect",
     ]) {
       expect(text).toContain(expected);
     }
@@ -72,8 +75,10 @@ describe("renderResumePdf", () => {
     expect(text.indexOf("Globex")).toBeLessThan(
       text.indexOf("Built a payments service handling 10k requests/day")
     );
+    // Section order: Summary → Technical Skills → Experience → Education → Certifications.
+    expect(text.indexOf("TECHNICAL SKILLS")).toBeLessThan(text.indexOf("EXPERIENCE"));
     expect(text.indexOf("EXPERIENCE")).toBeLessThan(text.indexOf("EDUCATION"));
-    expect(text.indexOf("EDUCATION")).toBeLessThan(text.indexOf("SKILLS"));
+    expect(text.indexOf("EDUCATION")).toBeLessThan(text.indexOf("CERTIFICATIONS"));
   });
 
   it("omits empty sections instead of rendering blank headings", async () => {
@@ -110,13 +115,15 @@ describe("renderResumePdf (CLASSIC template)", () => {
       "Built a payments service handling 10k requests/day",
       "EDUCATION",
       "State University",
-      "SKILLS",
+      "TECHNICAL SKILLS",
+      "CERTIFICATIONS",
     ]) {
       expect(text).toContain(expected);
     }
 
     expect(text.indexOf("Senior Backend Engineer")).toBeLessThan(text.indexOf("Globex"));
+    expect(text.indexOf("TECHNICAL SKILLS")).toBeLessThan(text.indexOf("EXPERIENCE"));
     expect(text.indexOf("EXPERIENCE")).toBeLessThan(text.indexOf("EDUCATION"));
-    expect(text.indexOf("EDUCATION")).toBeLessThan(text.indexOf("SKILLS"));
+    expect(text.indexOf("EDUCATION")).toBeLessThan(text.indexOf("CERTIFICATIONS"));
   });
 });

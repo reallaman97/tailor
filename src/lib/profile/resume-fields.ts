@@ -2,6 +2,7 @@ import { getAssignedProfileId } from "@/lib/profile/shared";
 import { getPersonalInfo } from "@/lib/profile/personal-info";
 import { listWorkHistory } from "@/lib/profile/work-history";
 import { listEducation } from "@/lib/profile/education";
+import { listCertifications } from "@/lib/profile/certifications";
 import { listSkillGroups } from "@/lib/profile/skills";
 import type { WorkingStyle, WorkingType } from "@/generated/prisma/client";
 
@@ -31,6 +32,11 @@ export type ResumeFields = {
     startDate: string | null;
     endDate: string | null;
   }>;
+  certifications: Array<{
+    name: string;
+    issuer: string | null;
+    issueDate: string | null;
+  }>;
   skills: Array<{
     category: string;
     skills: string[];
@@ -47,10 +53,11 @@ export type ResumeFields = {
  * Returns null if the profile has no personal info saved yet.
  */
 export async function getResumeFieldsForProfile(profileId: string): Promise<ResumeFields | null> {
-  const [personalInfo, workHistory, education, skillGroups] = await Promise.all([
+  const [personalInfo, workHistory, education, certifications, skillGroups] = await Promise.all([
     getPersonalInfo(profileId),
     listWorkHistory(profileId),
     listEducation(profileId),
+    listCertifications(profileId),
     listSkillGroups(profileId),
   ]);
 
@@ -81,6 +88,11 @@ export async function getResumeFieldsForProfile(profileId: string): Promise<Resu
       field: e.field,
       startDate: e.startDate,
       endDate: e.endDate,
+    })),
+    certifications: certifications.map((c) => ({
+      name: c.name,
+      issuer: c.issuer,
+      issueDate: c.issueDate,
     })),
     skills: skillGroups
       .filter((g) => g.skills.length > 0)

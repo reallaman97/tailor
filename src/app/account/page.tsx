@@ -4,6 +4,7 @@ import { getAssignedProfileId } from "@/lib/profile/shared";
 import { getPersonalInfo } from "@/lib/profile/personal-info";
 import { listWorkHistory } from "@/lib/profile/work-history";
 import { listEducation } from "@/lib/profile/education";
+import { listCertifications } from "@/lib/profile/certifications";
 import { listSkillGroups } from "@/lib/profile/skills";
 import { AccountShell } from "@/components/account-shell";
 import { PageHeader } from "@/components/page-header";
@@ -24,13 +25,14 @@ export default async function AccountPage() {
   const profileId = isSuperAdmin ? null : await getAssignedProfileId(user.id);
   const profile = profileId
     ? await (async () => {
-        const [personalInfo, workHistory, education, skillGroups] = await Promise.all([
+        const [personalInfo, workHistory, education, certifications, skillGroups] = await Promise.all([
           getPersonalInfo(profileId),
           listWorkHistory(profileId),
           listEducation(profileId),
+          listCertifications(profileId),
           listSkillGroups(profileId),
         ]);
-        return personalInfo ? { personalInfo, workHistory, education, skillGroups } : null;
+        return personalInfo ? { personalInfo, workHistory, education, certifications, skillGroups } : null;
       })()
     : null;
 

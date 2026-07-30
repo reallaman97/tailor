@@ -192,7 +192,17 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
                   <h3 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                     Skills
                   </h3>
-                  <p className="text-sm text-foreground">{tailoredContent.orderedSkills.join(", ")}</p>
+                  {tailoredContent.skillCategories && tailoredContent.skillCategories.length > 0 ? (
+                    <div className="flex flex-col gap-1">
+                      {tailoredContent.skillCategories.map((group, i) => (
+                        <p key={i} className="text-sm text-foreground">
+                          <span className="font-medium">{group.category}:</span> {group.skills.join(", ")}
+                        </p>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-foreground">{(tailoredContent.orderedSkills ?? []).join(", ")}</p>
+                  )}
                 </div>
               </CardContent>
             </Card>
