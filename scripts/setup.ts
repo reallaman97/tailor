@@ -13,6 +13,7 @@
  *   SUPERADMIN_USERNAME                     — optional, defaults to the email's local part
  */
 import { db } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { hashPassword } from "@/lib/auth/password";
 import { generateDek, wrapDek } from "@/lib/crypto/envelope";
 
@@ -73,17 +74,27 @@ async function ensureSuperadmin(): Promise<void> {
     return;
   }
 
-  await db.user.create({
-    data: {
-      email,
-      username,
-      passwordHash: await hashPassword(password),
-      encryptedDek: wrapDek(generateDek()),
-      role: "SUPERADMIN",
-      approved: true,
-    },
-  });
-  console.log(`✓ superadmin created: ${email} (@${username})`);
+  try {
+    await db.user.create({
+      data: {
+        email,
+        username,
+        passwordHash: await hashPassword(password),
+        encryptedDek: wrapDek(generateDek()),
+        role: "SUPERADMIN",
+        approved: true,
+      },
+    });
+    console.log(`✓ superadmin created: ${email} (@${username})`);
+  } catch (err) {
+    // A taken username shouldn't crash setup (e.g. a Vercel build) — warn instead.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const target = Array.isArray(err.meta?.target) ? err.meta.target.join(",") : String(err.meta?.target ?? "");
+      console.warn(`• superadmin not created — ${target.includes("username") ? "username" : "email"} already in use. Adjust SUPERADMIN_USERNAME / SUPERADMIN_EMAIL.`);
+      return;
+    }
+    throw err;
+  }
 }
 
 async function main(): Promise<void> {
