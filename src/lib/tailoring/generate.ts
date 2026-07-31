@@ -10,9 +10,12 @@ export const TAILORING_PROMPT_VERSION = "tailoring-v2";
 // Settings), and constructing a client is cheap — no network call happens
 // until a request is actually made. maxRetries is low so a doomed request
 // (e.g. an out-of-quota 429) fails quickly instead of retrying for ~a minute.
+// An explicit timeout bounds a hung/slow call so it errors well before the
+// serverless function limit rather than holding the request open indefinitely
+// (the SDK default is 10 minutes).
 async function getClient(): Promise<OpenAI> {
   const apiKey = await getOpenAiApiKey();
-  return new OpenAI({ apiKey, maxRetries: 1 });
+  return new OpenAI({ apiKey, maxRetries: 1, timeout: 100_000 });
 }
 
 /** Maps raw OpenAI SDK errors to a clear, user-facing message. */

@@ -32,13 +32,12 @@ export async function createResumeAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input", values };
   }
 
-  const roleTrack = await classifyRoleTrack(parsed.data.jobTitle, parsed.data.jobDescription);
-
   let resumeId: string;
   try {
     resumeId = await createResume(user.id, {
       ...parsed.data,
-      roleTrack,
+      // Classified concurrently with tailoring below (best-effort); starts at OTHER.
+      roleTrack: "OTHER",
       source: "JOB_BOARD",
       status: "APPLIED",
     });
@@ -47,10 +46,20 @@ export async function createResumeAction(
     throw err;
   }
 
-  // Build the tailored resume. If it fails, roll the application back out of the
-  // tracker so a failed build records nothing — the user just fixes it and retries.
+  // The slow OpenAI tailoring call and the (best-effort) role-track
+  // classification run concurrently instead of back-to-back — this removes a
+  // second sequential LLM round trip from the user's wait. If tailoring fails,
+  // roll the application back out of the tracker so a failed build records
+  // nothing — the user just fixes it and retries.
   try {
-    await tailorResume(user.id, resumeId);
+    await Promise.all([
+      tailorResume(user.id, resumeId),
+      classifyRoleTrack(parsed.data.jobTitle, parsed.data.jobDescription)
+        .then((roleTrack) =>
+          roleTrack !== "OTHER" ? db.resume.update({ where: { id: resumeId }, data: { roleTrack } }) : null
+        )
+        .catch(() => {}),
+    ]);
   } catch (err) {
     await db.resume.delete({ where: { id: resumeId } }).catch(() => {});
     if (err instanceof ProfileIncompleteError) {

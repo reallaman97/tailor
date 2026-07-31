@@ -6,6 +6,13 @@ import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 
+// Resume generation (createResumeAction / admin build) runs the OpenAI tailoring
+// call inline, which can take much longer than the default function limit. Give
+// the route generous headroom so a slow generation isn't killed mid-flight.
+// 60s is the safe ceiling on Vercel Hobby; raise to 300 on Pro/Enterprise (or
+// move generation to a background job — see the tailoring pipeline notes).
+export const maxDuration = 60;
+
 export default async function NewResumePage() {
   const user = await requireResumePlatformAccess();
   const isSuperAdmin = user.role === "SUPERADMIN";
