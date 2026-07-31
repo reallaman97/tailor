@@ -17,8 +17,12 @@ export type BuildableProfile = { id: string; fullName: string | null; userCount:
 
 export function AdminNewResumeForm({ profiles }: { profiles: BuildableProfile[] }) {
   const [state, formAction, pending] = useActionState(createResumeAsAdminAction, undefined);
-  const [profileId, setProfileId] = usePersistedState("admin-resume-builder:profileId", "");
-  const [source, setSource] = usePersistedState<ApplicationSource>("admin-resume-builder:source", "OTHER");
+  // Session-scoped: the chosen profile stays fixed across builds/re-renders while
+  // the admin works on this page, and is cleared once the page/tab is closed.
+  const [profileId, setProfileId] = usePersistedState("admin-resume-builder:profileId", "", { storage: "session" });
+  const [source, setSource] = usePersistedState<ApplicationSource>("admin-resume-builder:source", "OTHER", {
+    storage: "session",
+  });
 
   // On a successful build, download the tailored resume PDF right away.
   useEffect(() => {

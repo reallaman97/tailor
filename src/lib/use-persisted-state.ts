@@ -13,17 +13,27 @@ function getListeners(key: string): Set<() => void> {
   return set;
 }
 
-function readRaw(key: string): string | null {
+export type PersistStorage = "local" | "session";
+
+function getStore(storage: PersistStorage): Storage | null {
   try {
-    return window.localStorage.getItem(key);
+    return storage === "session" ? window.sessionStorage : window.localStorage;
   } catch {
     return null;
   }
 }
 
-function writeRaw(key: string, raw: string) {
+function readRaw(key: string, storage: PersistStorage): string | null {
   try {
-    window.localStorage.setItem(key, raw);
+    return getStore(storage)?.getItem(key) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function writeRaw(key: string, raw: string, storage: PersistStorage) {
+  try {
+    getStore(storage)?.setItem(key, raw);
   } catch {
     // ignore quota/unavailable storage
   }
@@ -62,7 +72,12 @@ function parseOr<T>(raw: string | null, fallback: T): T {
  * nothing changed, which made TanStack Table's controlled state think it
  * had changed on every render and recompute continuously, freezing the page.
  */
-export function usePersistedState<T>(key: string, initial: T) {
+export function usePersistedState<T>(
+  key: string,
+  initial: T,
+  options?: { storage?: PersistStorage }
+) {
+  const storage = options?.storage ?? "local";
   const [stableInitial] = useState(initial);
 
   const subscribe = useCallback(
@@ -76,7 +91,7 @@ export function usePersistedState<T>(key: string, initial: T) {
 
   const raw = useSyncExternalStore(
     subscribe,
-    () => readRaw(key),
+    () => readRaw(key, storage),
     () => null
   );
 
@@ -84,11 +99,11 @@ export function usePersistedState<T>(key: string, initial: T) {
 
   const setValue = useCallback(
     (next: T | ((prev: T) => T)) => {
-      const current = parseOr(readRaw(key), stableInitial);
+      const current = parseOr(readRaw(key, storage), stableInitial);
       const resolved = typeof next === "function" ? (next as (prev: T) => T)(current) : next;
-      writeRaw(key, JSON.stringify(resolved));
+      writeRaw(key, JSON.stringify(resolved), storage);
     },
-    [key, stableInitial]
+    [key, stableInitial, storage]
   );
 
   return [value, setValue] as const;
