@@ -6,16 +6,21 @@ import { getApplicationDetail, type AdminApplicationDetail } from "@/lib/admin/a
 import { getResumeFieldsForResume } from "@/lib/profile/resume-fields";
 import { decryptTailoredContent } from "@/lib/tailoring/tailor-resume";
 import { DetailsForm } from "./details-form";
-import { StatusMultiSelect } from "../status-select";
+import { ScheduleControls } from "./schedule-controls";
 import { ApprovalSelect } from "../approval-select";
 import { AppShell } from "@/components/app-shell";
 import { ApprovalStatusCell } from "@/components/approval-status-cell";
 import { StatusBadges } from "@/components/status-badges";
+import { InterviewStatusPill } from "@/app/interview/status-pill";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { ROLE_TRACK_LABEL, getPrimaryStatus } from "@/lib/resume-status";
+import { listActiveStages, listActiveStatuses, listActiveMeetingTypes } from "@/lib/interview/config";
+import { listCallers, listInterviewsForApplication } from "@/lib/interview/interviews";
+import { getInterviewTimezone } from "@/lib/settings";
+import { formatInterviewTime } from "@/lib/interview/timezone";
 import { ExternalLinkIcon, DownloadIcon } from "@/components/icons";
 import type { ResumeStatus } from "@/generated/prisma/client";
 
@@ -81,6 +86,22 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
   ]);
 
   const workHistoryById = new Map((resumeFields?.workHistory ?? []).map((w) => [w.id, w]));
+
+  // Superadmin-only: data for scheduling (and listing) interviews linked to this application.
+  const scheduling = isSuperAdmin
+    ? await (async () => {
+        const [stages, statuses, meetingTypes, callers, timezone, linkedInterviews] = await Promise.all([
+          listActiveStages(),
+          listActiveStatuses(),
+          listActiveMeetingTypes(),
+          listCallers(),
+          getInterviewTimezone(),
+          listInterviewsForApplication(id),
+        ]);
+        const defaultStatusId = statuses.find((s) => s.label.toLowerCase() === "scheduled")?.id ?? "";
+        return { stages, statuses, meetingTypes, callers, timezone, linkedInterviews, defaultStatusId };
+      })()
+    : null;
 
   return (
     <AppShell userEmail={user.email} isSuperAdmin={isSuperAdmin}>
@@ -215,8 +236,20 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
             <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Application tracking
             </h2>
-            {isSuperAdmin ? (
-              <StatusMultiSelect resumeId={resume.id} statuses={resume.statuses} />
+            {isSuperAdmin && scheduling ? (
+              <ScheduleControls
+                resumeId={resume.id}
+                statuses={resume.statuses}
+                applicationId={resume.id}
+                company={resume.companyName}
+                jobTitle={resume.jobTitle}
+                stages={scheduling.stages.map((o) => ({ id: o.id, label: o.label }))}
+                interviewStatuses={scheduling.statuses.map((o) => ({ id: o.id, label: o.label }))}
+                meetingTypes={scheduling.meetingTypes.map((o) => ({ id: o.id, label: o.label }))}
+                callers={scheduling.callers.map((c) => ({ id: c.id, label: c.name }))}
+                defaultStatusId={scheduling.defaultStatusId}
+                timezone={scheduling.timezone}
+              />
             ) : (
               <StatusBadges statuses={resume.statuses} nowrap />
             )}
@@ -234,6 +267,35 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
               />
             )}
           </div>
+
+          {isSuperAdmin && scheduling && scheduling.linkedInterviews.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Linked interviews</CardTitle>
+                <CardDescription>Interviews created from this application.</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col divide-y divide-border">
+                {scheduling.linkedInterviews.map((iv) => (
+                  <Link
+                    key={iv.id}
+                    href={`/interview/${iv.id}`}
+                    className="flex flex-wrap items-center gap-3 py-2 text-sm hover:bg-muted"
+                  >
+                    <span className="w-44 shrink-0 text-muted-foreground">
+                      {iv.scheduledAt ? formatInterviewTime(iv.scheduledAt, scheduling.timezone) : "Unscheduled"}
+                    </span>
+                    {iv.stage && (
+                      <span className="rounded border border-border bg-muted px-1 py-px text-xs font-medium text-muted-foreground">
+                        {iv.stage.label}
+                      </span>
+                    )}
+                    <InterviewStatusPill status={iv.status} />
+                    <span className="text-muted-foreground">{iv.caller?.name ?? "Unassigned"}</span>
+                  </Link>
+                ))}
+              </CardContent>
+            </Card>
+          )}
 
           <div className="flex flex-wrap gap-x-8 gap-y-1 text-sm">
             <span className="text-muted-foreground">

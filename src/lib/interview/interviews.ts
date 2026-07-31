@@ -274,6 +274,19 @@ export async function listInterviews(
   return rows.map((r) => toSummary(r, profileNames));
 }
 
+/** All (non-deleted) interviews linked to an application. Used from the Applications tracker (superadmin). */
+export async function listInterviewsForApplication(applicationId: string): Promise<InterviewSummary[]> {
+  const rows = await db.interview.findMany({
+    where: { applicationId, deletedAt: null },
+    orderBy: [{ scheduledAt: "desc" }, { createdAt: "desc" }],
+    select: SUMMARY_SELECT,
+  });
+  const profileNames = await getProfileNames(
+    [...new Set(rows.map((r) => r.profileId).filter((id): id is string => id !== null))]
+  );
+  return rows.map((r) => toSummary(r, profileNames));
+}
+
 export async function getInterview(access: InterviewAccess, id: string): Promise<InterviewDetail | null> {
   const row = await db.interview.findFirst({
     where: { id, ...scopeWhere(access) },

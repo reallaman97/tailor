@@ -4,7 +4,7 @@ import { useLayoutEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { updateResumeStatusAction } from "./actions";
 import { StatusBadges } from "@/components/status-badges";
-import { STATUS_OPTIONS } from "@/lib/resume-status";
+import { STATUS_OPTIONS, INTERVIEW_STATUSES } from "@/lib/resume-status";
 import { ChevronDownIcon } from "@/components/icons";
 import type { ResumeStatus } from "@/generated/prisma/client";
 
@@ -28,9 +28,12 @@ const ESTIMATED_PANEL_HEIGHT = STATUS_OPTIONS.length * 32 + 16;
 export function StatusMultiSelect({
   resumeId,
   statuses,
+  onSchedule,
 }: {
   resumeId: string;
   statuses: ResumeStatus[];
+  /** Called when an interview-stage status (Intro/Tech/Final) is newly added — used to prompt scheduling an interview. */
+  onSchedule?: (status: ResumeStatus) => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [open, setOpen] = useState(false);
@@ -86,9 +89,15 @@ export function StatusMultiSelect({
   }
 
   function toggleStatus(value: ResumeStatus) {
-    const next = statuses.includes(value) ? statuses.filter((s) => s !== value) : [...statuses, value];
+    const adding = !statuses.includes(value);
+    const next = adding ? [...statuses, value] : statuses.filter((s) => s !== value);
     if (next.length === 0) return; // at least one status is required
     startTransition(() => updateResumeStatusAction(resumeId, next));
+    // Adding an interview stage is the "an interview is scheduled" signal — prompt to create one.
+    if (adding && onSchedule && INTERVIEW_STATUSES.has(value)) {
+      setOpen(false);
+      onSchedule(value);
+    }
   }
 
   return (
