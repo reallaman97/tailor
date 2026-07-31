@@ -8,11 +8,15 @@ import { listWorkHistory } from "@/lib/profile/work-history";
 import { listEducation } from "@/lib/profile/education";
 import { listCertifications } from "@/lib/profile/certifications";
 import { listSkillGroups } from "@/lib/profile/skills";
+import { getProfileTemplate } from "@/lib/profile/template";
+import { getSettings } from "@/lib/settings";
+import { styleKeyFromAppDefault } from "@/lib/export/styles";
 import { PersonalInfoForm } from "./personal-info-form";
 import { WorkHistorySection } from "./work-history-section";
 import { EducationSection } from "./education-section";
 import { CertificationsSection } from "./certifications-section";
 import { SkillsSection } from "./skills-section";
+import { TemplateSelector } from "./template-selector";
 import { AssignedUsersManager } from "./assigned-users-manager";
 import { AccountShell } from "@/components/account-shell";
 import { PageHeader } from "@/components/page-header";
@@ -32,14 +36,17 @@ export default async function AdminEditProfilePage({
   });
   if (!profile) notFound();
 
-  const [personalInfo, workHistory, education, certifications, skillGroups, users] = await Promise.all([
-    getPersonalInfo(profileId),
-    listWorkHistory(profileId),
-    listEducation(profileId),
-    listCertifications(profileId),
-    listSkillGroups(profileId),
-    listAllUsers(),
-  ]);
+  const [personalInfo, workHistory, education, certifications, skillGroups, users, profileTemplate, settings] =
+    await Promise.all([
+      getPersonalInfo(profileId),
+      listWorkHistory(profileId),
+      listEducation(profileId),
+      listCertifications(profileId),
+      listSkillGroups(profileId),
+      listAllUsers(),
+      getProfileTemplate(profileId),
+      getSettings(),
+    ]);
 
   return (
     <AccountShell isSuperAdmin>
@@ -64,6 +71,11 @@ export default async function AdminEditProfilePage({
         </Card>
 
         <PersonalInfoForm profileId={profileId} info={personalInfo} />
+        <TemplateSelector
+          profileId={profileId}
+          current={profileTemplate}
+          appDefaultKey={styleKeyFromAppDefault(settings.resumeTemplate)}
+        />
         <WorkHistorySection profileId={profileId} entries={workHistory} />
         <EducationSection profileId={profileId} entries={education} />
         <CertificationsSection profileId={profileId} entries={certifications} />

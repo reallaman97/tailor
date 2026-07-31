@@ -41,6 +41,12 @@ export default async function AdminPanelPage() {
       icon: FolderIcon,
     },
     {
+      href: "/admin/templates",
+      title: "Resume Templates",
+      description: "Browse the 10 built-in PDF styles and assign one per profile.",
+      icon: FileTextIcon,
+    },
+    {
       href: "/interview/settings",
       title: "Interview Settings",
       description: "Timezone, interview stages, statuses, and meeting types.",

@@ -15,6 +15,7 @@ import {
   updateCertificationEntry,
   deleteCertificationEntry,
 } from "@/lib/profile/certifications";
+import { setProfileTemplate, InvalidTemplateError } from "@/lib/profile/template";
 import { savePersonalInfo } from "@/lib/profile/personal-info";
 import {
   createWorkHistoryEntry,
@@ -168,6 +169,18 @@ export async function deleteCertificationAction(profileId: string, entryId: stri
   await requireSuperAdmin();
   await deleteCertificationEntry(profileId, entryId);
   revalidatePath(`/admin/profiles/${profileId}`);
+}
+
+export async function updateProfileTemplateAction(profileId: string, styleKey: string): Promise<{ error?: string }> {
+  await requireSuperAdmin();
+  try {
+    await setProfileTemplate(profileId, styleKey);
+  } catch (err) {
+    if (err instanceof InvalidTemplateError) return { error: err.message };
+    throw err;
+  }
+  revalidatePath(`/admin/profiles/${profileId}`);
+  return {};
 }
 
 export async function createSkillGroupAction(

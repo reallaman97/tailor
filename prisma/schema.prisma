@@ -107,6 +107,10 @@ model Profile {
 
   professionalSummaryEnc String? // resume field, free text
 
+  // Resume PDF style key (see src/lib/export/styles.ts). Null = use the app-wide
+  // default (AppSettings.resumeTemplate). Plaintext, low sensitivity.
+  resumeTemplate String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

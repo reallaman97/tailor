@@ -7,6 +7,8 @@ import { getResumeFieldsForResume } from "@/lib/profile/resume-fields";
 import { decryptTailoredContent } from "@/lib/tailoring/tailor-resume";
 import { buildResumeDocument } from "@/lib/export/build-document";
 import { renderResumePdf } from "@/lib/export/render-pdf";
+import { effectiveStyleKey } from "@/lib/export/styles";
+import { getProfileTemplate } from "@/lib/profile/template";
 import { getSettings } from "@/lib/settings";
 
 function sanitizeFilenamePart(value: string): string {
@@ -50,7 +52,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const tailoredContent = await decryptTailoredContent(resume.profileId, resume.tailoredContentEnc);
   const document = buildResumeDocument(resumeFields, tailoredContent);
   const settings = await getSettings();
-  const pdfBuffer = await renderResumePdf(document, settings.resumeTemplate);
+  const profileTemplate = resume.profileId ? await getProfileTemplate(resume.profileId) : null;
+  const pdfBuffer = await renderResumePdf(document, effectiveStyleKey(profileTemplate, settings.resumeTemplate));
 
   const filename = `${sanitizeFilenamePart(resumeFields.fullName)}-${sanitizeFilenamePart(resume.companyName)}.pdf`;
 

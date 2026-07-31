@@ -1,13 +1,14 @@
 import { renderToBuffer } from "@react-pdf/renderer";
-import { ModernResumeTemplate } from "@/lib/export/templates/modern";
-import { ClassicResumeTemplate } from "@/lib/export/templates/classic";
+import { StyledResumeTemplate } from "@/lib/export/templates/styled";
+import { getResumeStyle } from "@/lib/export/styles";
 import type { ResumeDocument } from "@/lib/export/build-document";
-import type { ResumeTemplate } from "@/generated/prisma/client";
 
-export function renderResumePdf(
-  data: ResumeDocument,
-  template: ResumeTemplate = "MODERN"
-): Promise<Buffer> {
-  const Template = template === "CLASSIC" ? ClassicResumeTemplate : ModernResumeTemplate;
-  return renderToBuffer(<Template data={data} />);
+/**
+ * Renders a resume PDF in the given style (a key from RESUME_STYLES; unknown or
+ * omitted falls back to the default). Callers pass the resume's effective style
+ * — the profile's chosen style, or the app default — see effectiveStyleKey().
+ */
+export function renderResumePdf(data: ResumeDocument, styleKey: string = "modern"): Promise<Buffer> {
+  const style = getResumeStyle(styleKey);
+  return renderToBuffer(<StyledResumeTemplate data={data} style={style} />);
 }

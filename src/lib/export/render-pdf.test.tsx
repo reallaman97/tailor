@@ -94,7 +94,7 @@ describe("renderResumePdf", () => {
 
 describe("renderResumePdf (CLASSIC template)", () => {
   it("produces a real, extractable, correctly-ordered PDF using the classic layout", async () => {
-    const buffer = await renderResumePdf(SAMPLE_DOCUMENT, "CLASSIC");
+    const buffer = await renderResumePdf(SAMPLE_DOCUMENT, "classic");
     expect(buffer.subarray(0, 5).toString("utf8")).toBe("%PDF-");
 
     const parser = new PDFParse({ data: buffer });
