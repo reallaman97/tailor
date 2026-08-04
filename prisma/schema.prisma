@@ -302,6 +302,8 @@ model Resume {
   // interview can pull the tailored resume / job info). SetNull on the
   // interview side keeps interviews if the application is deleted.
   interviews  Interview[]
+  // Cached application-checking verdict (see ApplicationCheck).
+  check       ApplicationCheck?
 
   @@index([userId])
   @@index([profileId])
@@ -359,8 +361,42 @@ model AppSettings {
   // every interview time platform-wide. Validated against Intl in the app layer.
   interviewTimezone String @default("UTC")
 
+  // Application-checking criteria — what makes an application "right". Editable
+  // by a superadmin; these defaults are the required baseline.
+  checkCountry     String @default("US") // target country (ISO-ish name/code), or "ANY"
+  checkWorkStyle   String @default("REMOTE") // REMOTE | HYBRID | ONSITE | ANY
+  checkJobCategory String @default("Computer Science / software roles: software engineering, AI/ML, DevOps, data engineering, security, IT, cloud, and closely related technical fields.") @db.Text
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/**
+ * Cached verdict of checking one application against the criteria in AppSettings.
+ * One row per Resume (upserted). `criteriaHash` records which criteria produced
+ * the verdict, so a criteria change marks existing rows stale (→ re-check)
+ * without re-calling the LLM for anything already checked under the same rules.
+ */
+model ApplicationCheck {
+  id       String @id @default(cuid())
+  resumeId String @unique
+  resume   Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  passed     Boolean
+  countryOk  Boolean
+  remoteOk   Boolean
+  categoryOk Boolean
+
+  detectedCountry   String?
+  detectedWorkStyle String?
+  detectedCategory  String?
+  reason            String? @db.Text
+
+  criteriaHash String
+  checkedAt    DateTime @default(now())
+
+  @@index([checkedAt])
+  @@index([criteriaHash])
 }
 
 // ── Rate limiting ──────────────────────────────────────
