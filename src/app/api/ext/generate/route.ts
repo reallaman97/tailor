@@ -185,6 +185,7 @@ export async function POST(request: Request) {
       "X-Resume-Id": resumeId,
       "X-Profile-Name": encodeURIComponent(profileName),
       "X-Company": encodeURIComponent(companyName),
+      "X-Job-Title": encodeURIComponent(jobTitle),
       "X-Proof-Saved": proofSaved ? "1" : "0",
     },
   });

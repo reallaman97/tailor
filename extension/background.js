@@ -1,8 +1,11 @@
 import { getSettings, apiBase } from "./common.js";
 
 const MENU_ID = "cjp-generate-resume";
+const COMPLETE_MENU_ID = "cjp-complete-application";
 const PROGRESS_NOTIFICATION = "cjp-progress";
-const JOB_KEY = "activeJob"; // last/current generation, shared with the popup
+const JOB_KEY = "activeJob"; // last/current job, shared with the popup
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ---------------------------------------------------------------------------
 // Context menu
@@ -20,6 +23,11 @@ async function refreshMenu() {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({ id: MENU_ID, title: menuTitle(""), contexts: ["selection"] });
+    chrome.contextMenus.create({
+      id: COMPLETE_MENU_ID,
+      title: "Complete application (upload proof)",
+      contexts: ["page", "selection"],
+    });
     refreshMenu();
   });
 });
@@ -29,8 +37,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId !== MENU_ID) return;
-  generate((info.selectionText || "").trim(), tab);
+  if (info.menuItemId === MENU_ID) generate((info.selectionText || "").trim(), tab);
+  else if (info.menuItemId === COMPLETE_MENU_ID) completeApplication(tab);
 });
 
 // ---------------------------------------------------------------------------
@@ -168,7 +176,8 @@ async function blobToDataUrl(blob) {
   for (let i = 0; i < bytes.length; i += chunk) {
     binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
   }
-  return `data:application/pdf;base64,${btoa(binary)}`;
+  const mime = blob.type || "application/octet-stream";
+  return `data:${mime};base64,${btoa(binary)}`;
 }
 
 function filenameFromResponse(res, fallback) {
@@ -213,6 +222,7 @@ async function generate(jobDescription, tab) {
   await injectToast(activeTabId);
 
   const job = {
+    kind: "generate",
     status: "running",
     stage: "Sending request…",
     progress: 4,
@@ -220,6 +230,7 @@ async function generate(jobDescription, tab) {
     pageTitle: tab?.title || "",
     pageUrl: tab?.url || "",
     company: "",
+    jobTitle: "",
     filename: "",
     error: "",
     existingUrl: "",
@@ -309,9 +320,20 @@ async function generate(jobDescription, tab) {
     const filename = filenameFromResponse(res, `${profileName || "resume"}.pdf`);
     const company = decodeHeader(res, "X-Company");
     const derivedProfile = decodeHeader(res, "X-Profile-Name");
+    const jobTitle = decodeHeader(res, "X-Job-Title");
+    const resumeId = res.headers.get("X-Resume-Id") || "";
     const proofSaved = res.headers.get("X-Proof-Saved") === "1";
     const dataUrl = await blobToDataUrl(blob);
     await chrome.downloads.download({ url: dataUrl, filename, saveAs: false });
+
+    // Remember which application this page produced, so "Complete application"
+    // on this same page can attach the proof screenshot to it.
+    if (job.pageUrl && resumeId) {
+      const store = await chrome.storage.local.get({ appByUrl: {} });
+      const map = store.appByUrl || {};
+      map[job.pageUrl] = { resumeId, company, jobTitle, at: Date.now() };
+      await chrome.storage.local.set({ appByUrl: map });
+    }
 
     await finish(
       {
@@ -329,6 +351,206 @@ async function generate(jobDescription, tab) {
     await finish(
       { status: "error", stage: "Generation failed", error: String(err?.message || err) },
       () => notify("Generation failed", String(err?.message || err)),
+      { text: "!", color: "#b91c1c" }
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Full-page screenshot: scroll the page one viewport at a time, grab each
+// frame, and stitch them onto a downscaled (≤600px-wide) low-quality JPEG so
+// the proof upload stays small. Returns a data: URL, or null if the page can't
+// be captured.
+// ---------------------------------------------------------------------------
+
+async function captureFullPage(tab, onProgress) {
+  const tabId = tab?.id;
+  if (tabId == null) return null;
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ["capture.js"] });
+  } catch {
+    return null; // restricted page
+  }
+
+  const send = (m) => chrome.tabs.sendMessage(tabId, m);
+
+  let metrics;
+  try {
+    metrics = await send({ type: "cjp-cap-metrics" });
+  } catch {
+    return null;
+  }
+  if (!metrics || !metrics.vh || !metrics.vw) return null;
+  const { totalHeight, vh, vw, origScrollY } = metrics;
+
+  const targetW = Math.max(1, Math.min(600, Math.round(vw)));
+  const scale = targetW / vw;
+  const MAX_SEGMENTS = 30; // guard against absurdly long pages
+  const segCount = Math.min(MAX_SEGMENTS, Math.max(1, Math.ceil(totalHeight / vh)));
+  const capturedHeight = Math.min(totalHeight, segCount * vh);
+  const finalH = Math.max(1, Math.round(capturedHeight * scale));
+
+  const canvas = new OffscreenCanvas(targetW, finalH);
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, targetW, finalH);
+
+  let lastGrab = 0;
+  try {
+    for (let i = 0; i < segCount; i++) {
+      const prep = await send({ type: "cjp-cap-prep", y: i * vh });
+      const scrollY = prep && typeof prep.scrollY === "number" ? prep.scrollY : i * vh;
+
+      // captureVisibleTab is rate-limited (~2/sec) — keep a safe gap.
+      const gap = Date.now() - lastGrab;
+      if (gap < 600) await delay(600 - gap);
+
+      let dataUrl;
+      try {
+        dataUrl =
+          tab.windowId != null
+            ? await chrome.tabs.captureVisibleTab(tab.windowId, { format: "jpeg", quality: 80 })
+            : await chrome.tabs.captureVisibleTab({ format: "jpeg", quality: 80 });
+      } finally {
+        await send({ type: "cjp-cap-unprep" }).catch(() => {});
+      }
+      lastGrab = Date.now();
+
+      const bmp = await createImageBitmap(await (await fetch(dataUrl)).blob());
+      ctx.drawImage(bmp, 0, 0, bmp.width, bmp.height, 0, Math.round(scrollY * scale), targetW, Math.round(vh * scale));
+      bmp.close();
+
+      if (onProgress) onProgress((i + 1) / segCount);
+      if (scrollY + vh >= totalHeight) break; // reached the bottom early
+    }
+  } finally {
+    await send({ type: "cjp-cap-restore", y: origScrollY }).catch(() => {});
+  }
+
+  // Compress hard: ≤600px wide, low-quality JPEG.
+  const out = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.5 });
+  return blobToDataUrl(out); // data:image/jpeg;base64,...
+}
+
+// ---------------------------------------------------------------------------
+// "Complete application" — capture the finished page and upload it as proof to
+// the application generated from this page.
+// ---------------------------------------------------------------------------
+
+async function completeApplication(tab) {
+  const { apiUrl, profileId, profileName } = await getSettings();
+
+  if (!apiUrl) {
+    notify("Set up required", "Open the extension options and set the API URL.");
+    openOptions();
+    return;
+  }
+
+  activeTabId = tab?.id ?? null;
+  await injectToast(activeTabId);
+
+  const job = {
+    kind: "complete",
+    status: "running",
+    stage: "Capturing the page…",
+    progress: 6,
+    profileName: profileName || "",
+    pageTitle: tab?.title || "",
+    pageUrl: tab?.url || "",
+    company: "",
+    jobTitle: "",
+    filename: "",
+    error: "",
+    existingUrl: "",
+    startedAt: Date.now(),
+    finishedAt: 0,
+    elapsedMs: 0,
+  };
+  await setJob(job);
+  setBadge("…", "#0f766e");
+
+  const finish = async (patch, notifyFn, badge) => {
+    Object.assign(job, { progress: 100, finishedAt: Date.now(), elapsedMs: Date.now() - job.startedAt }, patch);
+    await setJob(job);
+    if (badge) setBadge(badge.text, badge.color);
+    if (notifyFn) notifyFn();
+  };
+
+  // 1) Full-page screenshot (compressed).
+  const screenshot = await captureFullPage(tab, async (frac) => {
+    job.progress = Math.min(70, Math.round(frac * 70));
+    job.stage = `Capturing the page… ${Math.round(frac * 100)}%`;
+    await setJob(job);
+  });
+
+  if (!screenshot) {
+    await finish(
+      { status: "error", stage: "Couldn't capture", error: "This page can't be captured (it may block extensions)." },
+      () => notify("Couldn't capture page", "This page can't be captured."),
+      { text: "!", color: "#b91c1c" }
+    );
+    return;
+  }
+
+  // 2) Upload it as proof to the application built from this page.
+  job.stage = "Uploading proof…";
+  job.progress = 85;
+  await setJob(job);
+
+  const store = await chrome.storage.local.get({ appByUrl: {} });
+  const rec = (store.appByUrl || {})[tab?.url || ""];
+
+  try {
+    const res = await fetch(apiBase(apiUrl) + "/api/ext/complete", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        profileId: profileId || undefined,
+        resumeId: rec?.resumeId || undefined,
+        pageUrl: tab?.url,
+        screenshot,
+      }),
+    });
+
+    if (res.status === 401) {
+      await finish(
+        { status: "error", stage: "Not signed in", error: "Sign in to the Resume Platform from the extension options." },
+        () => notify("Please sign in", "Open the extension options to log in to the Resume Platform."),
+        { text: "!", color: "#b91c1c" }
+      );
+      openOptions();
+      return;
+    }
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}));
+      const message = detail.error || `Error ${res.status}`;
+      await finish(
+        { status: "error", stage: "Couldn't complete", error: message },
+        () => notify("Couldn't complete application", message),
+        { text: "!", color: "#b91c1c" }
+      );
+      return;
+    }
+
+    const detail = await res.json().catch(() => ({}));
+    const company = detail.companyName || rec?.company || "";
+    const jobTitle = detail.jobTitle || rec?.jobTitle || "";
+    const existingUrl = detail.resumeId ? apiBase(apiUrl) + "/resumes/" + detail.resumeId : "";
+    await finish(
+      { status: "done", stage: "Application completed", company, jobTitle, existingUrl },
+      () =>
+        notifyWithLink(
+          "Application completed",
+          `Proof uploaded${company ? " for " + company : ""}.` + (existingUrl ? " Click to view it." : ""),
+          existingUrl
+        ),
+      { text: "✓", color: "#15803d" }
+    );
+  } catch (err) {
+    await finish(
+      { status: "error", stage: "Upload failed", error: String(err?.message || err) },
+      () => notify("Upload failed", String(err?.message || err)),
       { text: "!", color: "#b91c1c" }
     );
   }

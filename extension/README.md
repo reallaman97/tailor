@@ -21,9 +21,25 @@ here is the same account you use on the site.
 4. The extension downloads it as `<profile-name>-<company>.pdf`.
 
 Extension-built resumes show up in the tracker with the same application data as
-the website. The **proof-of-application screenshot is left blank for now** — the
-server still accepts one (`screenshot` in the request body), so the capture can
-be re-enabled later without a server change.
+the website.
+
+## Complete application (upload proof)
+
+After you've actually finished applying on the job page, right-click →
+**Complete application (upload proof)**. The extension:
+
+1. Takes a **full-page screenshot** of the tab (it scrolls the page and stitches
+   the frames; the status toast is hidden for each grab so it's never in the
+   shot).
+2. **Compresses it hard** — downscaled to **≤600px wide** and saved as a
+   low-quality JPEG — so the upload stays small.
+3. Uploads it to `POST /api/ext/complete`, which attaches it as the
+   **proof-of-application screenshot** on the application generated from this
+   page (matched by the id recorded at generate time, or by the page URL).
+
+Every step is shown in the on-page toast (capturing % → uploading → completed,
+or a clear error such as "No application found for this page"). When it's done
+the toast links straight to the application.
 
 ## Install (load unpacked)
 
@@ -79,6 +95,8 @@ application. (This is the same rule the website enforces.)
 - `GET  /api/ext/me` — is the reused session a valid Resume Platform login?
 - `GET  /api/ext/profiles` — profiles this account may build for.
 - `POST /api/ext/generate` — build + tailor + return the PDF.
+- `POST /api/ext/complete` — attach a proof-of-application screenshot to the
+  application built from a page.
 
 All three authenticate with the shared Auth.js session cookie and enforce the
 same scoping as the web app (bidders only build for their assigned profile).

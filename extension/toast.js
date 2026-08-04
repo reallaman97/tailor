@@ -115,31 +115,50 @@
     const detail = q("detail");
     const link = q("link");
     link.style.display = "none";
+    const setLink = (text, url) => {
+      if (!url) return;
+      link.style.display = "inline-block";
+      link.textContent = text;
+      link.href = url;
+    };
+    const isComplete = job.kind === "complete";
 
     if (running) {
-      detail.innerHTML = job.profileName ? `Building for <b>${esc(job.profileName)}</b>…` : "Working…";
+      if (isComplete) {
+        detail.innerHTML = job.pageTitle ? esc(job.pageTitle) : "Uploading proof of application…";
+      } else {
+        detail.innerHTML = job.profileName ? `Building for <b>${esc(job.profileName)}</b>…` : "Working…";
+      }
     } else if (job.status === "done") {
-      detail.innerHTML =
-        `Downloaded <b>${esc(job.filename || "resume.pdf")}</b>` +
-        (job.company ? ` for ${esc(job.company)}` : "") +
-        (job.proofSaved ? `<br>Application recorded with a screenshot.` : `<br>Application recorded.`);
+      if (isComplete) {
+        detail.innerHTML =
+          `Proof uploaded — <b>${esc(job.jobTitle || "application")}</b>` +
+          (job.company ? ` at ${esc(job.company)}` : "") +
+          ` marked complete.`;
+        setLink("View the application →", job.existingUrl);
+      } else {
+        detail.innerHTML =
+          `Downloaded <b>${esc(job.filename || "resume.pdf")}</b>` +
+          (job.company ? ` for ${esc(job.company)}` : "") +
+          (job.proofSaved ? `<br>Application recorded with a screenshot.` : `<br>Application recorded.`);
+      }
     } else if (job.status === "duplicate") {
       detail.innerHTML =
         `<b>${esc(job.jobTitle || "This role")}</b>` +
         (job.company ? ` at ${esc(job.company)}` : "") +
         ` was already generated for this profile.`;
-      if (job.existingUrl) {
-        link.style.display = "inline-block";
-        link.textContent = "View the existing application →";
-        link.href = job.existingUrl;
-      }
+      setLink("View the existing application →", job.existingUrl);
     } else {
       detail.innerHTML = `<span style="color:#ef4444">${esc(job.error || "Something went wrong.")}</span>`;
     }
 
-    // Auto-dismiss finished states; keep errors/duplicates around longer.
+    // Auto-dismiss finished states; keep errors, duplicates, and anything with
+    // a follow-up link around longer.
     clearTimeout(dismissTimer);
-    if (!running) dismissTimer = setTimeout(remove, job.status === "done" ? 6000 : 12000);
+    if (!running) {
+      const ms = job.status === "done" && !job.existingUrl ? 6000 : 12000;
+      dismissTimer = setTimeout(remove, ms);
+    }
 
     // Keep the elapsed counter live while running.
     if (running && !elapsedTimer) {

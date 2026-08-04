@@ -79,27 +79,42 @@ function renderJob(job) {
   const detail = $("jobDetail");
   const link = $("jobLink");
   link.style.display = "none";
+  const setLink = (text, url) => {
+    if (!url) return;
+    link.style.display = "inline-block";
+    link.textContent = text;
+    link.href = url;
+  };
+  const isComplete = job.kind === "complete";
 
   if (job.status === "running") {
-    const target = [job.profileName && `<strong>${escapeHtml(job.profileName)}</strong>`, job.pageTitle && escapeHtml(job.pageTitle)]
-      .filter(Boolean)
-      .join(" — ");
-    detail.innerHTML = target || "Working…";
+    if (isComplete) {
+      detail.innerHTML = job.pageTitle ? escapeHtml(job.pageTitle) : "Uploading proof of application…";
+    } else {
+      const target = [job.profileName && `<strong>${escapeHtml(job.profileName)}</strong>`, job.pageTitle && escapeHtml(job.pageTitle)]
+        .filter(Boolean)
+        .join(" — ");
+      detail.innerHTML = target || "Working…";
+    }
   } else if (job.status === "done") {
-    detail.innerHTML =
-      `Downloaded <strong>${escapeHtml(job.filename || "resume.pdf")}</strong>` +
-      (job.company ? ` for ${escapeHtml(job.company)}` : "") +
-      (job.proofSaved ? `<br>Application recorded with a screenshot.` : `<br>Application recorded.`);
+    if (isComplete) {
+      detail.innerHTML =
+        `Proof uploaded — <strong>${escapeHtml(job.jobTitle || "application")}</strong>` +
+        (job.company ? ` at ${escapeHtml(job.company)}` : "") +
+        ` marked complete.`;
+      setLink("View the application →", job.existingUrl);
+    } else {
+      detail.innerHTML =
+        `Downloaded <strong>${escapeHtml(job.filename || "resume.pdf")}</strong>` +
+        (job.company ? ` for ${escapeHtml(job.company)}` : "") +
+        (job.proofSaved ? `<br>Application recorded with a screenshot.` : `<br>Application recorded.`);
+    }
   } else if (job.status === "duplicate") {
     detail.innerHTML =
       `<strong>${escapeHtml(job.jobTitle || "This role")}</strong>` +
       (job.company ? ` at ${escapeHtml(job.company)}` : "") +
       ` was already generated for this profile.`;
-    if (job.existingUrl) {
-      link.style.display = "inline-block";
-      link.textContent = "View the existing application →";
-      link.href = job.existingUrl;
-    }
+    setLink("View the existing application →", job.existingUrl);
   } else {
     detail.innerHTML = `<span class="err">${escapeHtml(job.error || "Something went wrong.")}</span>`;
   }
