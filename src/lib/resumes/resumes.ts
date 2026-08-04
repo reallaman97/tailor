@@ -10,9 +10,17 @@ export class ResumeNotFoundError extends Error {
   }
 }
 
+/** The application this new build collides with — surfaced so the UI can name it and link to it. */
+export type DuplicateMatch = { id: string; companyName: string; jobTitle: string };
+
 export class DuplicateApplicationError extends Error {
-  constructor() {
-    super("You've already logged an application for this job");
+  readonly existing: DuplicateMatch;
+  constructor(existing: DuplicateMatch) {
+    super(
+      `A resume for “${existing.jobTitle}” at “${existing.companyName}” has already been generated for this profile.`
+    );
+    this.existing = existing;
+    this.name = "DuplicateApplicationError";
   }
 }
 
@@ -127,10 +135,10 @@ async function findDuplicate(
   jobLink: string | undefined,
   companyName: string,
   jobTitle: string
-): Promise<boolean> {
+): Promise<DuplicateMatch | null> {
   const trimmedLink = jobLink?.trim();
 
-  const match = await db.resume.findFirst({
+  return db.resume.findFirst({
     where: {
       ...scope,
       OR: [
@@ -141,9 +149,8 @@ async function findDuplicate(
         },
       ],
     },
-    select: { id: true },
+    select: { id: true, companyName: true, jobTitle: true },
   });
-  return match !== null;
 }
 
 export async function createResume(userId: string, input: CreateResumeInput): Promise<string> {
@@ -157,8 +164,9 @@ export async function createResume(userId: string, input: CreateResumeInput): Pr
   // that would otherwise let the exact same posting slip past URL matching.
   const jobLink = input.jobLink ? normalizeJobUrl(input.jobLink) : undefined;
 
-  if (await findDuplicate(scope, jobLink, input.companyName, input.jobTitle)) {
-    throw new DuplicateApplicationError();
+  const duplicate = await findDuplicate(scope, jobLink, input.companyName, input.jobTitle);
+  if (duplicate) {
+    throw new DuplicateApplicationError(duplicate);
   }
 
   const status = input.status ?? "DRAFT";

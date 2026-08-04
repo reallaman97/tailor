@@ -96,7 +96,20 @@ export function AdminNewResumeForm({ profiles }: { profiles: BuildableProfile[] 
         />
       </FormField>
 
-      {state?.error && <Alert variant="destructive">{state.error}</Alert>}
+      {state?.error && (
+        <Alert variant="destructive">
+          {state.error}
+          {state.duplicateId && (
+            <>
+              {" "}
+              <Link href={`/resumes/${state.duplicateId}`} className="font-medium underline">
+                View the existing application
+              </Link>
+              .
+            </>
+          )}
+        </Alert>
+      )}
       {state?.resumeId && <Alert variant="success">Resume built — the PDF is downloading.</Alert>}
 
       <div className="flex items-center gap-3">

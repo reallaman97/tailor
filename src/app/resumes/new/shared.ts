@@ -15,7 +15,7 @@ export type NewResumeValues = {
 // returned — `values` echoes the submitted fields so the form keeps them
 // (React resets a <form action> after it runs) and the user can just retry.
 export type NewResumeState =
-  | { error?: string; resumeId?: string; values?: NewResumeValues }
+  | { error?: string; resumeId?: string; values?: NewResumeValues; duplicateId?: string }
   | undefined;
 
 export function readResumeValues(formData: FormData): NewResumeValues {

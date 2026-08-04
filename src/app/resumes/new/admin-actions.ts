@@ -64,7 +64,8 @@ export async function createResumeAsAdminAction(
       status: "APPLIED",
     });
   } catch (err) {
-    if (err instanceof DuplicateApplicationError) return { error: err.message, values };
+    if (err instanceof DuplicateApplicationError)
+      return { error: err.message, values, duplicateId: err.existing.id };
     throw err;
   }
 

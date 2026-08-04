@@ -112,6 +112,26 @@ describe("resumes (integration)", () => {
     ).rejects.toThrow(DuplicateApplicationError);
   });
 
+  it("carries the existing application (id, company, title) on the duplicate error", async () => {
+    const existingId = await createResume(userId, {
+      jobLink: undefined,
+      companyName: "Wonka Industries",
+      jobTitle: "Chocolatier",
+      jobDescription: "A description that is definitely long enough to pass validation.",
+    });
+
+    await expect(
+      createResume(userId, {
+        jobLink: undefined,
+        companyName: "wonka industries",
+        jobTitle: "chocolatier",
+        jobDescription: "A description that is definitely long enough to pass validation.",
+      })
+    ).rejects.toMatchObject({
+      existing: { id: existingId, companyName: "Wonka Industries", jobTitle: "Chocolatier" },
+    });
+  });
+
   it("catches a company+title duplicate even when the new entry has a job link the old one lacks", async () => {
     await createResume(userId, {
       jobLink: undefined,

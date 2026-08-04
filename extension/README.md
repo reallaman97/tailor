@@ -39,6 +39,11 @@ On any job posting, highlight the full job description, right-click, and choose
 **Generate resume for `<profile>`**. A notification shows progress; the PDF
 downloads when it's ready (generation can take up to ~a minute).
 
+**Duplicates are blocked.** If a resume for the same **profile** and the same
+**company + job title** was already generated, nothing new is built — an
+**"Already added"** notification appears instead; click it to open the existing
+application. (This is the same rule the website enforces.)
+
 ## Permissions
 
 - `contextMenus`, `downloads`, `notifications`, `storage` — the core flow.

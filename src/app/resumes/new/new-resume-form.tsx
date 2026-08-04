@@ -55,7 +55,20 @@ export function NewResumeForm() {
           />
         </FormField>
 
-        {state?.error && <Alert variant="destructive">{state.error}</Alert>}
+        {state?.error && (
+          <Alert variant="destructive">
+            {state.error}
+            {state.duplicateId && (
+              <>
+                {" "}
+                <Link href={`/resumes/${state.duplicateId}`} className="font-medium underline">
+                  View the existing application
+                </Link>
+                .
+              </>
+            )}
+          </Alert>
+        )}
         {state?.resumeId && (
           <Alert variant="success">
             Resume built — your PDF is downloading. Upload proof of application in the dialog to finish.

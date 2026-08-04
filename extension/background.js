@@ -38,6 +38,27 @@ function notify(title, message) {
   });
 }
 
+// Notifications that, when clicked, open a URL (e.g. the existing application).
+const notificationLinks = new Map();
+
+function notifyWithLink(title, message, url) {
+  chrome.notifications.create(
+    { type: "basic", iconUrl: "icons/icon128.png", title, message: message || "" },
+    (id) => {
+      if (url) notificationLinks.set(id, url);
+    }
+  );
+}
+
+chrome.notifications.onClicked.addListener((id) => {
+  const url = notificationLinks.get(id);
+  if (url) {
+    chrome.tabs.create({ url });
+    notificationLinks.delete(id);
+    chrome.notifications.clear(id);
+  }
+});
+
 function openOptions() {
   chrome.runtime.openOptionsPage();
 }
@@ -90,6 +111,18 @@ async function generate(jobDescription, tab) {
     if (res.status === 401) {
       notify("Please sign in", "Open the extension options to log in to the Resume Platform.");
       openOptions();
+      return;
+    }
+    if (res.status === 409) {
+      // Same profile + same company & job title (or same posting link) — already built.
+      const detail = await res.json().catch(() => ({}));
+      const link = detail.existing?.id ? apiBase(apiUrl) + "/resumes/" + detail.existing.id : null;
+      notifyWithLink(
+        "Already added",
+        (detail.error || "A resume for this job was already generated for this profile.") +
+          (link ? " Click to view it." : ""),
+        link
+      );
       return;
     }
     if (!res.ok) {

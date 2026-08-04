@@ -101,7 +101,12 @@ export async function POST(request: Request) {
       status: "APPLIED",
     });
   } catch (err) {
-    if (err instanceof DuplicateApplicationError) return NextResponse.json({ error: err.message }, { status: 409 });
+    if (err instanceof DuplicateApplicationError) {
+      return NextResponse.json(
+        { error: err.message, duplicate: true, existing: err.existing },
+        { status: 409 }
+      );
+    }
     throw err;
   }
 
