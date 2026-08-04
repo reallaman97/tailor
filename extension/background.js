@@ -94,10 +94,27 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 // Shared job state (persisted + broadcast to any open popup)
 // ---------------------------------------------------------------------------
 
+// The tab that triggered the current generation — where the in-page toast lives.
+let activeTabId = null;
+
+/** Injects the on-page status toast into the triggering tab (once per generation). */
+async function injectToast(tabId) {
+  if (tabId == null) return;
+  try {
+    await chrome.scripting.executeScript({ target: { tabId }, files: ["toast.js"] });
+  } catch {
+    // Restricted page (chrome://, the Web Store, PDF viewer, etc.) — can't inject;
+    // fall back to the notification + popup only.
+    activeTabId = null;
+  }
+}
+
 async function setJob(job) {
   await chrome.storage.local.set({ [JOB_KEY]: job });
   // No receiver (popup closed) rejects — swallow it.
   chrome.runtime.sendMessage({ type: "job-update", job }).catch(() => {});
+  // Push the same state to the in-page toast on the triggering tab.
+  if (activeTabId != null) chrome.tabs.sendMessage(activeTabId, { type: "cjp-toast", job }).catch(() => {});
 }
 
 const STAGE_FOR_PCT = [
@@ -186,6 +203,10 @@ async function generate(jobDescription, tab) {
     notify("Select a job description", "Highlight the full job description on the page, then right-click → Generate resume.");
     return;
   }
+
+  // Show the in-page toast on the triggering tab right away.
+  activeTabId = tab?.id ?? null;
+  await injectToast(activeTabId);
 
   const job = {
     status: "running",

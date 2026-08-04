@@ -39,6 +39,12 @@ On any job posting, highlight the full job description, right-click, and choose
 **Generate resume for `<profile>`**. Generation can take up to ~a minute; you
 get live status the whole way:
 
+- An **on-page status toast** (bottom-right of the page you're on) shows the
+  live stage, a progress bar, and elapsed time — then the result right there:
+  the downloaded file, an "already added" duplicate (with a link to the
+  existing application), or the error. It appears the moment you click and
+  auto-dismisses when done. (On pages that block extensions — `chrome://`, the
+  Web Store, the PDF viewer — it falls back to the notification + popup.)
 - A **progress notification** advances through the stages — _reading the job
   description → tailoring with AI → preparing your PDF_.
 - The **toolbar icon shows a badge** (`…` working, `✓` done, `!` error).
