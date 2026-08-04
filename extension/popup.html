@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Resume Generator</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; width: 280px; margin: 0; padding: 14px; background: Canvas; color: CanvasText; }
+      h1 { font-size: 14px; margin: 0 0 10px; }
+      .line { font-size: 13px; margin: 6px 0; }
+      .muted { color: color-mix(in srgb, CanvasText 55%, Canvas); }
+      .ok { color: #15803d; } .err { color: #b91c1c; }
+      button { margin-top: 10px; width: 100%; padding: 8px; font-size: 13px; font-weight: 600; border-radius: 8px; border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas); background: transparent; color: CanvasText; cursor: pointer; }
+      .hint { font-size: 12px; margin-top: 12px; color: color-mix(in srgb, CanvasText 55%, Canvas); }
+    </style>
+  </head>
+  <body>
+    <h1>Resume Generator</h1>
+    <div class="line" id="status">Checking…</div>
+    <div class="line muted" id="profile"></div>
+    <button id="openOptions">Settings</button>
+    <p class="hint">Select a job description on any page, right-click, and choose <strong>Generate resume</strong>.</p>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Resume Generator — Settings</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body {
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        margin: 0; padding: 24px; max-width: 560px;
+        background: Canvas; color: CanvasText;
+      }
+      h1 { font-size: 18px; margin: 0 0 4px; }
+      p.sub { margin: 0 0 20px; color: color-mix(in srgb, CanvasText 55%, Canvas); font-size: 13px; }
+      section { border: 1px solid color-mix(in srgb, CanvasText 15%, Canvas); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+      h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; margin: 0 0 12px; color: color-mix(in srgb, CanvasText 55%, Canvas); }
+      label { display: block; font-size: 13px; font-weight: 600; margin: 10px 0 4px; }
+      input, select { width: 100%; box-sizing: border-box; padding: 8px 10px; font-size: 14px; border-radius: 8px; border: 1px solid color-mix(in srgb, CanvasText 25%, Canvas); background: Canvas; color: CanvasText; }
+      .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+      button { padding: 8px 14px; font-size: 14px; font-weight: 600; border-radius: 8px; border: 1px solid transparent; cursor: pointer; }
+      button.primary { background: #0f766e; color: white; }
+      button.ghost { background: transparent; border-color: color-mix(in srgb, CanvasText 25%, Canvas); color: CanvasText; }
+      .status { font-size: 13px; margin-top: 10px; }
+      .ok { color: #15803d; }
+      .err { color: #b91c1c; }
+      .muted { color: color-mix(in srgb, CanvasText 55%, Canvas); }
+    </style>
+  </head>
+  <body>
+    <h1>Resume Generator</h1>
+    <p class="sub">Configure the Cute Job Platform connection, sign in, and pick which candidate profile to build for.</p>
+
+    <section>
+      <h2>Connection</h2>
+      <label for="apiUrl">API URL</label>
+      <input id="apiUrl" type="url" placeholder="https://your-platform.example.com" />
+      <div class="row">
+        <button id="saveUrl" class="primary">Save URL</button>
+        <span id="urlStatus" class="status muted"></span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Account</h2>
+      <div id="loggedOut">
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="username" />
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="current-password" />
+        <div class="row">
+          <button id="login" class="primary">Sign in</button>
+          <span id="loginStatus" class="status"></span>
+        </div>
+      </div>
+      <div id="loggedIn" style="display:none">
+        <p class="status">Signed in as <strong id="who"></strong> <span id="role" class="muted"></span></p>
+        <div class="row"><button id="logout" class="ghost">Sign out</button></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Profile</h2>
+      <label for="profile">Build resumes for</label>
+      <select id="profile"><option value="">Sign in to load profiles</option></select>
+      <div class="row">
+        <button id="saveProfile" class="primary">Save profile</button>
+        <span id="profileStatus" class="status muted"></span>
+      </div>
+    </section>
+
+    <p class="sub">To generate: select a job description on any page, right-click, and choose <em>Generate resume</em>. The tailored PDF downloads automatically, named after the profile.</p>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

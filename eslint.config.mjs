@@ -22,6 +22,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The browser extension is a standalone MV3 sub-project with its own
+    // runtime (chrome.* / service-worker globals) — linted separately, not
+    // under the Next app's config.
+    "extension/**",
   ]),
 ]);
 
