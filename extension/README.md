@@ -36,8 +36,18 @@ here is the same account you use on the site.
 ## Use
 
 On any job posting, highlight the full job description, right-click, and choose
-**Generate resume for `<profile>`**. A notification shows progress; the PDF
-downloads when it's ready (generation can take up to ~a minute).
+**Generate resume for `<profile>`**. Generation can take up to ~a minute; you
+get live status the whole way:
+
+- A **progress notification** advances through the stages — _reading the job
+  description → tailoring with AI → preparing your PDF_.
+- The **toolbar icon shows a badge** (`…` working, `✓` done, `!` error).
+- Click the toolbar icon to open the **popup**, which shows a detailed,
+  live-updating status card: current stage, a progress bar, elapsed time, the
+  profile being built, and the final result (downloaded file, an "already
+  added" duplicate with a link to the existing application, or the error).
+
+The PDF downloads automatically when it's ready.
 
 **Duplicates are blocked.** If a resume for the same **profile** and the same
 **company + job title** was already generated, nothing new is built — an
