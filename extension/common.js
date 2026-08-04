@@ -1,9 +1,9 @@
 // Shared helpers for the background service worker, options, and popup.
 
 /** Default platform URL — used until the user overrides it in the options page. */
-export const DEFAULT_API_URL = "https://cutejobplatform.space";
+export const DEFAULT_API_URL = "https://www.cutejobplatform.space";
 
-/** Reads persisted settings (API URL + selected profile). Auth itself is the reused session cookie. */
+/** Reads persisted settings (API URL + selected profile). Auth is a bearer token (see below). */
 export async function getSettings() {
   return chrome.storage.local.get({ apiUrl: DEFAULT_API_URL, profileId: "", profileName: "" });
 }
@@ -17,62 +17,64 @@ export function apiBase(url) {
   return String(url || "").trim().replace(/\/+$/, "");
 }
 
-/** fetch against the platform, always including the reused session cookie. */
-export function apiFetch(apiUrl, path, options = {}) {
-  return fetch(apiBase(apiUrl) + path, { credentials: "include", ...options });
+// ---------------------------------------------------------------------------
+// Auth — a bearer token from /api/ext/login. A Chrome extension is cross-site
+// to the platform, so the SameSite=Lax session cookie can't be reused; the
+// token is sent as `Authorization: Bearer <token>` on every request instead.
+// ---------------------------------------------------------------------------
+
+export async function getToken() {
+  return (await chrome.storage.local.get({ extToken: "" })).extToken;
+}
+
+async function setToken(token) {
+  await chrome.storage.local.set({ extToken: token || "" });
+}
+
+/** Merges the Authorization header (if signed in) into a headers object. */
+export async function authHeaders(extra = {}) {
+  const token = await getToken();
+  return token ? { ...extra, Authorization: `Bearer ${token}` } : { ...extra };
+}
+
+/** fetch against the platform with the bearer token attached. */
+export async function apiFetch(apiUrl, path, options = {}) {
+  const headers = await authHeaders(options.headers || {});
+  return fetch(apiBase(apiUrl) + path, { credentials: "include", ...options, headers });
 }
 
 /**
- * Logs in through the platform's normal Auth.js credentials flow so the browser
- * stores the same session cookie the web app uses. Returns the authenticated
- * user, or throws on failure.
+ * Logs in and stores the returned bearer token. Returns the authenticated user,
+ * or throws with the server's message on failure.
  */
 export async function login(apiUrl, email, password) {
   const base = apiBase(apiUrl);
   if (!base) throw new Error("Set the API URL first.");
 
-  const csrfRes = await fetch(base + "/api/auth/csrf", { credentials: "include" });
-  if (!csrfRes.ok) throw new Error("Couldn't reach the API — check the URL.");
-  const { csrfToken } = await csrfRes.json();
-
-  const body = new URLSearchParams({
-    email,
-    password,
-    csrfToken,
-    callbackUrl: base + "/resumes",
-    json: "true",
-  });
-  await fetch(base + "/api/auth/callback/credentials", {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-    redirect: "manual",
-  });
-
-  // The callback sets the cookie but doesn't cleanly report success cross-origin;
-  // confirm by asking the API who we are.
-  const me = await fetch(base + "/api/ext/me", { credentials: "include" });
-  if (!me.ok) throw new Error("Invalid email/password, or the account isn't approved for the Resume Platform.");
-  return (await me.json()).user;
-}
-
-/** Clears the platform session (best-effort Auth.js signout). */
-export async function logout(apiUrl) {
-  const base = apiBase(apiUrl);
+  let res;
   try {
-    const csrfRes = await fetch(base + "/api/auth/csrf", { credentials: "include" });
-    const { csrfToken } = await csrfRes.json();
-    await fetch(base + "/api/auth/signout", {
+    res = await fetch(base + "/api/ext/login", {
       method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ csrfToken, callbackUrl: base, json: "true" }).toString(),
-      redirect: "manual",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
     });
   } catch {
-    // ignore — worst case the cookie expires on its own
+    throw new Error("Couldn't reach the API — check the URL.");
   }
+
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error(detail.error || "Sign in failed.");
+  }
+  const data = await res.json();
+  if (!data.token) throw new Error("Sign in failed.");
+  await setToken(data.token);
+  return data.user;
+}
+
+/** Clears the stored token (stateless server-side — nothing to revoke). */
+export async function logout() {
+  await setToken("");
 }
 
 /** Current login state, or null. */

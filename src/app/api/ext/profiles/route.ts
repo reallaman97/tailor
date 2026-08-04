@@ -5,8 +5,8 @@ import { getProfileNames } from "@/lib/profile/personal-info";
 import { listAllProfiles } from "@/lib/admin/profiles";
 
 /** Extension: the candidate profiles this user may build a resume for. */
-export async function GET() {
-  const user = await getExtUser();
+export async function GET(request: Request) {
+  const user = await getExtUser(request);
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   if (user.role === "SUPERADMIN") {

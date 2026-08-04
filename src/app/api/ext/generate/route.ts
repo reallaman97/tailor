@@ -52,7 +52,7 @@ function sanitizeFilenamePart(value: string): string {
 }
 
 export async function POST(request: Request) {
-  const user = await getExtUser();
+  const user = await getExtUser(request);
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   let body: z.infer<typeof bodySchema>;

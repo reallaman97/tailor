@@ -82,7 +82,7 @@ function targetWhere(
  * first. Returns { match: "page" | "fallback" | "none" }.
  */
 export async function GET(request: Request) {
-  const user = await getExtUser();
+  const user = await getExtUser(request);
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const params = new URL(request.url).searchParams;
@@ -123,7 +123,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const user = await getExtUser();
+  const user = await getExtUser(request);
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   let body: z.infer<typeof bodySchema>;

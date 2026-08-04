@@ -5,8 +5,11 @@ any web page, right-click **→ Generate resume**, and a tailored resume PDF is
 built by the platform and **downloaded automatically, named after the candidate
 profile**.
 
-It reuses the platform's normal login session (Auth.js cookie), so signing in
-here is the same account you use on the site.
+Sign in with your Resume Platform account (bidder or superadmin). The extension
+authenticates with a **bearer token** from `/api/ext/login` — a browser
+extension is cross-site to the platform, so the site's `SameSite=Lax` session
+cookie can't be reused; the token is sent as `Authorization: Bearer …` on every
+request instead.
 
 ## What it does
 
@@ -54,11 +57,12 @@ completed). When it's done the toast links straight to the application.
 3. Click **Load unpacked** and select this `extension/` folder.
 4. Click the extension's **Details → Extension options** (or the toolbar icon →
    Settings) and:
-   - **API URL** — defaults to `https://cutejobplatform.space`. Change it only
-     for another deployment (e.g. `http://localhost:3000` for local dev), then
-     click **Save URL**.
+   - **API URL** — defaults to `https://www.cutejobplatform.space`. Use the
+     exact canonical host (the one that does **not** redirect — a `www` ↔
+     non-`www` redirect drops the `Authorization` header). Change it for another
+     deployment (e.g. `http://localhost:3000` for local dev), then **Save URL**.
    - **Sign in** — email + password of a Resume Platform account (bidder or
-     superadmin). This stores the same session cookie the website uses.
+     superadmin). This stores a bearer token (not a cookie).
    - **Profile** — pick the candidate profile to build for (bidders have one;
      superadmins can pick any). Click **Save profile**.
 
@@ -93,24 +97,29 @@ application. (This is the same rule the website enforces.)
 
 - `contextMenus`, `downloads`, `notifications`, `storage` — the core flow.
 - `host_permissions: <all_urls>` — so the background worker can call your
-  configured API URL (unknown at build time) and reuse its session cookie. If
-  you prefer, edit `manifest.json` to restrict this to your exact API host.
+  configured API URL (unknown at build time). Requests to a host in
+  `host_permissions` bypass CORS, so the `Authorization` header works without
+  extra server config. If you prefer, edit `manifest.json` to restrict this to
+  your exact API host.
 
 ## Server API (in the main app)
 
-- `GET  /api/ext/me` — is the reused session a valid Resume Platform login?
+- `POST /api/ext/login` — verify credentials, return a bearer token.
+- `GET  /api/ext/me` — is the bearer token a valid Resume Platform login?
 - `GET  /api/ext/profiles` — profiles this account may build for.
 - `POST /api/ext/generate` — build + tailor + return the PDF.
-- `POST /api/ext/complete` — attach a proof-of-application screenshot to the
-  application built from a page.
+- `POST /api/ext/complete` — resolve/attach a proof-of-application screenshot to
+  the application built from a page.
 
-All three authenticate with the shared Auth.js session cookie and enforce the
-same scoping as the web app (bidders only build for their assigned profile).
+Every request authenticates with the bearer token (`Authorization: Bearer …`)
+and enforces the same scoping as the web app (bidders only build for their
+assigned profile).
 
 ## Notes
 
 - No build step — plain MV3 JavaScript. Edit files and hit **Reload** on the
   extension card.
-- The session cookie must reach the extension's requests; keep the API on HTTPS
-  in production. If a browser blocks the cross-site cookie, sign in again from
-  the options page.
+- Auth is a bearer token stored in `chrome.storage.local`, valid ~30 days (it's
+  signed with the server's `AUTH_SECRET`; rotating that secret signs everyone
+  out). If a request starts returning 401, just sign in again from the options
+  page.

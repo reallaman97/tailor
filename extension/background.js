@@ -1,4 +1,4 @@
-import { getSettings, apiBase } from "./common.js";
+import { getSettings, apiBase, apiFetch } from "./common.js";
 
 const MENU_ID = "cjp-generate-resume";
 const COMPLETE_MENU_ID = "cjp-complete-application";
@@ -253,9 +253,8 @@ async function generate(jobDescription, tab) {
   };
 
   try {
-    const res = await fetch(apiBase(apiUrl) + "/api/ext/generate", {
+    const res = await apiFetch(apiUrl, "/api/ext/generate", {
       method: "POST",
-      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         profileId: profileId || undefined,
@@ -502,10 +501,7 @@ async function completeApplication(tab) {
     if (profileId) params.set("profileId", profileId);
     if (tab?.url) params.set("pageUrl", tab.url);
     if (rec?.resumeId) params.set("resumeId", rec.resumeId);
-    const res = await fetch(apiBase(apiUrl) + "/api/ext/complete?" + params.toString(), {
-      method: "GET",
-      credentials: "include",
-    });
+    const res = await apiFetch(apiUrl, "/api/ext/complete?" + params.toString(), { method: "GET" });
     if (res.status === 401) {
       await finish(
         { status: "error", stage: "Not signed in", error: "Sign in to the Resume Platform from the extension options." },
@@ -591,9 +587,8 @@ async function completeApplication(tab) {
   await setJob(job);
 
   try {
-    const res = await fetch(apiBase(apiUrl) + "/api/ext/complete", {
+    const res = await apiFetch(apiUrl, "/api/ext/complete", {
       method: "POST",
-      credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         profileId: profileId || undefined,
