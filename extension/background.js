@@ -177,6 +177,18 @@ function filenameFromResponse(res, fallback) {
   return match ? match[1] : fallback;
 }
 
+/** Screenshot of the job page, stored as proof-of-application (like the web upload). */
+async function captureProof(tab) {
+  try {
+    const opts = { format: "jpeg", quality: 70 };
+    return tab?.windowId != null
+      ? await chrome.tabs.captureVisibleTab(tab.windowId, opts)
+      : await chrome.tabs.captureVisibleTab(opts);
+  } catch {
+    return null; // restricted page, or capture not permitted here
+  }
+}
+
 function decodeHeader(res, name) {
   const raw = res.headers.get(name);
   if (!raw) return "";
@@ -203,6 +215,10 @@ async function generate(jobDescription, tab) {
     notify("Select a job description", "Highlight the full job description on the page, then right-click → Generate resume.");
     return;
   }
+
+  // Capture proof of application from the clean job page BEFORE the toast
+  // overlay is injected (so the overlay isn't in the screenshot).
+  const screenshot = await captureProof(tab);
 
   // Show the in-page toast on the triggering tab right away.
   activeTabId = tab?.id ?? null;
@@ -247,6 +263,7 @@ async function generate(jobDescription, tab) {
         jobDescription,
         pageTitle: tab?.title,
         pageUrl: tab?.url,
+        screenshot: screenshot || undefined,
       }),
     });
 
@@ -304,6 +321,7 @@ async function generate(jobDescription, tab) {
     const filename = filenameFromResponse(res, `${profileName || "resume"}.pdf`);
     const company = decodeHeader(res, "X-Company");
     const derivedProfile = decodeHeader(res, "X-Profile-Name");
+    const proofSaved = res.headers.get("X-Proof-Saved") === "1";
     const dataUrl = await blobToDataUrl(blob);
     await chrome.downloads.download({ url: dataUrl, filename, saveAs: false });
 
@@ -314,8 +332,9 @@ async function generate(jobDescription, tab) {
         filename,
         company,
         profileName: derivedProfile || job.profileName,
+        proofSaved,
       },
-      () => notify("Resume ready", `Downloaded ${filename}`),
+      () => notify("Resume ready", `Downloaded ${filename}${proofSaved ? " · application recorded with proof" : ""}`),
       { text: "✓", color: "#15803d" }
     );
   } catch (err) {

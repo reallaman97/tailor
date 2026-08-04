@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { getExtUser } from "@/lib/ext/session";
 import { getAssignedProfileId } from "@/lib/profile/shared";
 import { getProfileNames } from "@/lib/profile/personal-info";
-import { createResume, DuplicateApplicationError } from "@/lib/resumes/resumes";
+import { createResume, DuplicateApplicationError, uploadScreenshot } from "@/lib/resumes/resumes";
 import { extractJobPosting } from "@/lib/resumes/extract-job-posting";
 import { tailorResume, decryptTailoredContent, ProfileIncompleteError } from "@/lib/tailoring/tailor-resume";
 import { getResumeFieldsForResume } from "@/lib/profile/resume-fields";
@@ -31,7 +31,21 @@ const bodySchema = z.object({
   jobTitle: z.string().optional(),
   pageTitle: z.string().optional(),
   pageUrl: z.string().optional(),
+  // Optional proof-of-application screenshot of the job page, captured by the
+  // extension as a data: URL (image/png|jpeg|webp) — stored like the web upload.
+  screenshot: z.string().optional(),
 });
+
+/** Parses a `data:image/...;base64,...` URL into bytes + mime, or null if malformed/unsupported. */
+function parseScreenshot(dataUrl: string): { data: Buffer; mimeType: string } | null {
+  const match = /^data:(image\/(?:png|jpeg|webp));base64,(.+)$/.exec(dataUrl.trim());
+  if (!match) return null;
+  try {
+    return { data: Buffer.from(match[2], "base64"), mimeType: match[1] };
+  } catch {
+    return null;
+  }
+}
 
 function sanitizeFilenamePart(value: string): string {
   return value.replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "resume";
@@ -88,11 +102,16 @@ export async function POST(request: Request) {
     roleTrack = extracted.roleTrack;
   }
 
+  // Record the job posting URL like the web form does — prefer an explicit
+  // jobLink, else the page the description was selected from. It's also a
+  // duplicate-detection key (normalized server-side).
+  const pageUrlAsLink = body.pageUrl && /^https?:\/\//i.test(body.pageUrl) ? body.pageUrl : undefined;
+
   // Create the tracked application (same as the web "Build resume").
   let resumeId: string;
   try {
     resumeId = await createResume(ownerUserId, {
-      jobLink: body.jobLink || undefined,
+      jobLink: body.jobLink || pageUrlAsLink,
       companyName,
       jobTitle,
       jobDescription: body.jobDescription,
@@ -120,6 +139,21 @@ export async function POST(request: Request) {
     }
     const detail = err instanceof Error ? err.message : "Tailoring failed";
     return NextResponse.json({ error: detail }, { status: 502 });
+  }
+
+  // Store the proof-of-application screenshot (same record as the web upload).
+  // Best-effort: a bad/oversized image must not throw away a successful build.
+  let proofSaved = false;
+  if (body.screenshot) {
+    const parsed = parseScreenshot(body.screenshot);
+    if (parsed) {
+      try {
+        await uploadScreenshot(ownerUserId, resumeId, parsed.data, parsed.mimeType);
+        proofSaved = true;
+      } catch {
+        // ignore — the application is still recorded, just without proof
+      }
+    }
   }
 
   // Render the tailored PDF in the profile's style.
@@ -151,6 +185,7 @@ export async function POST(request: Request) {
       "X-Resume-Id": resumeId,
       "X-Profile-Name": encodeURIComponent(profileName),
       "X-Company": encodeURIComponent(companyName),
+      "X-Proof-Saved": proofSaved ? "1" : "0",
     },
   });
 }

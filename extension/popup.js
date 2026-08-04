@@ -88,7 +88,8 @@ function renderJob(job) {
   } else if (job.status === "done") {
     detail.innerHTML =
       `Downloaded <strong>${escapeHtml(job.filename || "resume.pdf")}</strong>` +
-      (job.company ? ` for ${escapeHtml(job.company)}` : "");
+      (job.company ? ` for ${escapeHtml(job.company)}` : "") +
+      (job.proofSaved ? `<br>Application recorded with a screenshot.` : `<br>Application recorded.`);
   } else if (job.status === "duplicate") {
     detail.innerHTML =
       `<strong>${escapeHtml(job.jobTitle || "This role")}</strong>` +

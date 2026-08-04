@@ -119,7 +119,10 @@
     if (running) {
       detail.innerHTML = job.profileName ? `Building for <b>${esc(job.profileName)}</b>…` : "Working…";
     } else if (job.status === "done") {
-      detail.innerHTML = `Downloaded <b>${esc(job.filename || "resume.pdf")}</b>` + (job.company ? ` for ${esc(job.company)}` : "");
+      detail.innerHTML =
+        `Downloaded <b>${esc(job.filename || "resume.pdf")}</b>` +
+        (job.company ? ` for ${esc(job.company)}` : "") +
+        (job.proofSaved ? `<br>Application recorded with a screenshot.` : `<br>Application recorded.`);
     } else if (job.status === "duplicate") {
       detail.innerHTML =
         `<b>${esc(job.jobTitle || "This role")}</b>` +
