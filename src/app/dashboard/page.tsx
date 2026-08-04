@@ -35,16 +35,14 @@ function StatCard({
   accent: keyof typeof ACCENT_CLASSES;
 }) {
   return (
-    <Card>
-      <CardContent className="flex items-center gap-4 p-5">
-        <div className={`flex size-11 shrink-0 items-center justify-center rounded-lg ${ACCENT_CLASSES[accent]}`}>
-          {icon}
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-sm text-muted-foreground">{label}</div>
-          <div className="text-2xl font-bold tabular-nums text-foreground">{value}</div>
-        </div>
-      </CardContent>
+    <Card className="flex items-center gap-4 p-5">
+      <div className={`flex size-11 shrink-0 items-center justify-center rounded-lg ${ACCENT_CLASSES[accent]}`}>
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <div className="truncate text-sm text-muted-foreground">{label}</div>
+        <div className="text-2xl font-bold tabular-nums text-foreground">{value}</div>
+      </div>
     </Card>
   );
 }
