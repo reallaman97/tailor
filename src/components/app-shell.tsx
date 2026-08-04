@@ -1,11 +1,12 @@
 "use client";
 
 import { SidebarShell, type ShellNavLink } from "@/components/sidebar-shell";
-import { LayoutDashboardIcon, FileTextIcon, SparklesIcon } from "@/components/icons";
+import { LayoutDashboardIcon, FileTextIcon, SparklesIcon, CheckCircleIcon } from "@/components/icons";
 
 const DASHBOARD: ShellNavLink = { href: "/dashboard", label: "Dashboard", icon: LayoutDashboardIcon };
 const RESUME_BUILDER: ShellNavLink = { href: "/resumes/new", label: "Resume Builder", icon: SparklesIcon };
 const APPLICATIONS: ShellNavLink = { href: "/resumes", label: "Applications", icon: FileTextIcon };
+const CHECKS: ShellNavLink = { href: "/checks", label: "Application Checks", icon: CheckCircleIcon };
 
 /**
  * Resume Platform's shell. Dashboard is superadmin-only (an org-wide aggregate,
@@ -26,7 +27,7 @@ export function AppShell({
   wide?: boolean;
   children: React.ReactNode;
 }) {
-  const links = isSuperAdmin ? [DASHBOARD, RESUME_BUILDER, APPLICATIONS] : [RESUME_BUILDER, APPLICATIONS];
+  const links = isSuperAdmin ? [DASHBOARD, RESUME_BUILDER, APPLICATIONS, CHECKS] : [RESUME_BUILDER, APPLICATIONS];
 
   return (
     <SidebarShell

@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { requireSuperAdmin } from "@/lib/auth/require-user";
 import {
   getDashboardAnalytics,
@@ -14,7 +13,6 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LineChart } from "@/components/line-chart";
-import { buttonVariants } from "@/components/ui/button";
 import { FileTextIcon, TargetIcon, CalendarIcon, AlertCircleIcon } from "@/components/icons";
 import { ROLE_TRACK_LABEL, SOURCE_LABEL } from "@/lib/resume-status";
 
@@ -113,17 +111,12 @@ export default async function DashboardPage({
                 : "Every profile's job search, at a glance — numbers update automatically as applications are tracked."
             }
           />
-          <div className="flex items-end gap-3">
-            <Link href="/checks" className={buttonVariants("outline", "md")}>
-              Application checks
-            </Link>
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-muted-foreground">Profile</label>
-              <ProfileFilter
-                profiles={profiles.map((p) => ({ id: p.id, fullName: p.fullName }))}
-                selectedProfileId={selectedProfileId}
-              />
-            </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-muted-foreground">Profile</label>
+            <ProfileFilter
+              profiles={profiles.map((p) => ({ id: p.id, fullName: p.fullName }))}
+              selectedProfileId={selectedProfileId}
+            />
           </div>
         </div>
 
