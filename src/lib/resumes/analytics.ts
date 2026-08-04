@@ -264,3 +264,175 @@ export async function getDashboardAnalytics(filter: DashboardAnalyticsFilter = {
 
   return { overview, byProfile, byRoleTrack, bySource, today: todayTrend, weekly };
 }
+
+// ===========================================================================
+// Application counts per bidder, bucketed by day / week / month over a range.
+// ===========================================================================
+
+export type BidderCountsGranularity = "day" | "week" | "month";
+
+export type BidderCountsFilter = {
+  granularity: BidderCountsGranularity;
+  /** Inclusive start; when omitted a sensible default window for the granularity is used. */
+  from?: Date;
+  /** Inclusive end; defaults to today. */
+  to?: Date;
+  /** Scope to one candidate profile's applications. */
+  profileId?: string;
+};
+
+export type BidderCountsRow = {
+  bidderId: string;
+  bidderName: string;
+  bidderEmail: string;
+  perPeriod: number[]; // aligned to `periods`
+  total: number;
+};
+
+export type BidderApplicationCounts = {
+  granularity: BidderCountsGranularity;
+  fromKey: string; // inclusive first day of the (clamped) window, YYYY-MM-DD
+  toKey: string; // inclusive last day of the window
+  periods: string[]; // period-start keys (YYYY-MM-DD), chronological
+  periodLabels: string[]; // display labels aligned to `periods`
+  bidders: BidderCountsRow[]; // sorted by total desc
+  totalsPerPeriod: number[]; // column totals aligned to `periods`
+  grandTotal: number;
+  activeBidders: number;
+  perDayAverage: number;
+  busiestPeriodLabel: string | null;
+  busiestPeriodCount: number;
+};
+
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MAX_PERIODS = 120; // guard against pathologically wide matrices
+
+function startOfDayUTC(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+function startOfMonthUTC(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+}
+function addDaysUTC(d: Date, n: number): Date {
+  const x = new Date(d);
+  x.setUTCDate(x.getUTCDate() + n);
+  return x;
+}
+function addMonthsUTC(d: Date, n: number): Date {
+  const x = new Date(d);
+  x.setUTCMonth(x.getUTCMonth() + n);
+  return x;
+}
+
+function periodStart(date: Date, g: BidderCountsGranularity): Date {
+  if (g === "day") return startOfDayUTC(date);
+  if (g === "week") return startOfWeek(date);
+  return startOfMonthUTC(date);
+}
+function nextPeriod(date: Date, g: BidderCountsGranularity): Date {
+  if (g === "day") return addDaysUTC(date, 1);
+  if (g === "week") return addDaysUTC(date, 7);
+  return addMonthsUTC(date, 1);
+}
+function periodLabel(key: string, g: BidderCountsGranularity): string {
+  const d = new Date(`${key}T00:00:00.000Z`);
+  const mon = MONTH_ABBR[d.getUTCMonth()];
+  if (g === "month") return `${mon} ${d.getUTCFullYear()}`;
+  return `${mon} ${d.getUTCDate()}`;
+}
+
+function defaultRange(g: BidderCountsGranularity, now: Date): { from: Date; to: Date } {
+  const to = startOfDayUTC(now);
+  if (g === "day") return { from: addDaysUTC(to, -13), to }; // last 14 days
+  if (g === "week") return { from: addDaysUTC(startOfWeek(now), -7 * 7), to }; // last 8 weeks
+  return { from: addMonthsUTC(startOfMonthUTC(now), -5), to }; // last 6 months
+}
+
+/**
+ * Superadmin-only. Counts applications logged (by `createdAt`) per bidder — the
+ * account that submitted them ("Applied By") — bucketed by day, week, or month
+ * across a date range. Columns are generated for every period in range (even
+ * empty ones) so the matrix and trend line up. Wide ranges are clamped to the
+ * most recent {@link MAX_PERIODS} periods.
+ */
+export async function getBidderApplicationCounts(filter: BidderCountsFilter): Promise<BidderApplicationCounts> {
+  const g = filter.granularity;
+  const now = new Date();
+  const def = defaultRange(g, now);
+
+  const fromStart = periodStart(filter.from ?? def.from, g);
+  const toStart = periodStart(filter.to ?? def.to, g);
+  const windowEnd = nextPeriod(toStart >= fromStart ? toStart : fromStart, g); // exclusive
+
+  // Enumerate periods, then keep only the most recent MAX_PERIODS.
+  const allStarts: Date[] = [];
+  for (let d = new Date(fromStart); d < windowEnd; d = nextPeriod(d, g)) allStarts.push(new Date(d));
+  const starts = allStarts.slice(-MAX_PERIODS);
+  const effectiveFrom = starts[0] ?? fromStart;
+  const periods = starts.map(dateOnly);
+  const periodIndex = new Map(periods.map((p, i) => [p, i]));
+
+  const resumes = await db.resume.findMany({
+    where: {
+      ...(filter.profileId ? { profileId: filter.profileId } : {}),
+      createdAt: { gte: effectiveFrom, lt: windowEnd },
+    },
+    select: {
+      userId: true,
+      createdAt: true,
+      user: { select: { username: true, email: true } },
+    },
+  });
+
+  type Bucket = { name: string; email: string; per: number[]; total: number };
+  const byBidder = new Map<string, Bucket>();
+  const totalsPerPeriod = new Array(periods.length).fill(0);
+
+  for (const r of resumes) {
+    const idx = periodIndex.get(dateOnly(periodStart(r.createdAt, g)));
+    if (idx === undefined) continue;
+    let b = byBidder.get(r.userId);
+    if (!b) {
+      b = {
+        name: r.user?.username ?? r.user?.email ?? "Unknown",
+        email: r.user?.email ?? "",
+        per: new Array(periods.length).fill(0),
+        total: 0,
+      };
+      byBidder.set(r.userId, b);
+    }
+    b.per[idx]++;
+    b.total++;
+    totalsPerPeriod[idx]++;
+  }
+
+  const bidders: BidderCountsRow[] = [...byBidder.entries()]
+    .map(([bidderId, b]) => ({ bidderId, bidderName: b.name, bidderEmail: b.email, perPeriod: b.per, total: b.total }))
+    .sort((a, b) => b.total - a.total || a.bidderName.localeCompare(b.bidderName));
+
+  const periodLabels = periods.map((p) => periodLabel(p, g));
+  const grandTotal = totalsPerPeriod.reduce((s, n) => s + n, 0);
+
+  let busiestIdx = -1;
+  for (let i = 0; i < totalsPerPeriod.length; i++) {
+    if (busiestIdx < 0 || totalsPerPeriod[i] > totalsPerPeriod[busiestIdx]) busiestIdx = i;
+  }
+  const hasBusiest = busiestIdx >= 0 && totalsPerPeriod[busiestIdx] > 0;
+
+  const spanDays = Math.max(1, Math.round((windowEnd.getTime() - effectiveFrom.getTime()) / 86_400_000));
+
+  return {
+    granularity: g,
+    fromKey: dateOnly(effectiveFrom),
+    toKey: dateOnly(addDaysUTC(windowEnd, -1)),
+    periods,
+    periodLabels,
+    bidders,
+    totalsPerPeriod,
+    grandTotal,
+    activeBidders: bidders.filter((b) => b.total > 0).length,
+    perDayAverage: grandTotal / spanDays,
+    busiestPeriodLabel: hasBusiest ? periodLabels[busiestIdx] : null,
+    busiestPeriodCount: hasBusiest ? totalsPerPeriod[busiestIdx] : 0,
+  };
+}

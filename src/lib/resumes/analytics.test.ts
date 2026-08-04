@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { db } from "@/lib/db";
 import { createTestUser, deleteTestUser, createTestProfile, deleteTestProfile, MINIMAL_PERSONAL_INFO } from "@/lib/profile/test-helpers";
-import { getDashboardAnalytics } from "@/lib/resumes/analytics";
+import { getDashboardAnalytics, getBidderApplicationCounts } from "@/lib/resumes/analytics";
 import type { ResumeStatus, RoleTrack, ApplicationSource } from "@/generated/prisma/client";
 
 // getDashboardAnalytics() is a superadmin-only aggregate across every user in
@@ -266,6 +266,92 @@ describe("resume analytics (integration, aggregate across all users)", () => {
       expect(afterCurrentWeek - beforeCurrentWeek).toBe(1);
       expect(afterTotal - beforeTotal).toBe(1);
     } finally {
+      await deleteTestUser(userId);
+    }
+  });
+});
+
+describe("getBidderApplicationCounts (per-bidder application counts)", () => {
+  // A throwaway user's id is unique, so its bidder row is fully deterministic
+  // even though the DB is shared — we assert on that row (not on grand totals).
+  function utcNoonDaysAgo(n: number): Date {
+    const now = new Date();
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12, 0, 0));
+    d.setUTCDate(d.getUTCDate() - n);
+    return d;
+  }
+  const dayKey = (d: Date) => d.toISOString().slice(0, 10);
+
+  function seedAt(userId: string, createdAt: Date) {
+    return db.resume.create({
+      data: {
+        userId,
+        companyName: "Seed Co",
+        jobTitle: "Engineer",
+        jobDescription: "A description that is definitely long enough to pass validation.",
+        statuses: ["APPLIED"],
+        roleTrack: "OTHER",
+        source: "OTHER",
+        createdAt,
+      },
+    });
+  }
+
+  it("buckets a bidder's applications by day across a range", async () => {
+    const { id: userId } = await createTestUser();
+    try {
+      const today = utcNoonDaysAgo(0);
+      const yesterday = utcNoonDaysAgo(1);
+      const tenDaysAgo = utcNoonDaysAgo(10);
+      await seedAt(userId, today);
+      await seedAt(userId, today);
+      await seedAt(userId, today);
+      await seedAt(userId, yesterday);
+      await seedAt(userId, yesterday);
+      await seedAt(userId, tenDaysAgo);
+
+      const res = await getBidderApplicationCounts({ granularity: "day", from: utcNoonDaysAgo(13), to: today });
+      const row = res.bidders.find((b) => b.bidderId === userId);
+      expect(row).toBeDefined();
+      expect(row!.total).toBe(6);
+      expect(row!.perPeriod.reduce((s, n) => s + n, 0)).toBe(6);
+      expect(row!.perPeriod[res.periods.indexOf(dayKey(today))]).toBe(3);
+      expect(row!.perPeriod[res.periods.indexOf(dayKey(yesterday))]).toBe(2);
+      expect(row!.perPeriod[res.periods.indexOf(dayKey(tenDaysAgo))]).toBe(1);
+    } finally {
+      await deleteTestUser(userId);
+    }
+  });
+
+  it("excludes applications outside the requested range", async () => {
+    const { id: userId } = await createTestUser();
+    try {
+      await seedAt(userId, utcNoonDaysAgo(2)); // inside
+      await seedAt(userId, utcNoonDaysAgo(3)); // inside
+      await seedAt(userId, utcNoonDaysAgo(40)); // outside a last-7-days window
+
+      const res = await getBidderApplicationCounts({ granularity: "day", from: utcNoonDaysAgo(7), to: utcNoonDaysAgo(0) });
+      const row = res.bidders.find((b) => b.bidderId === userId);
+      expect(row?.total).toBe(2);
+    } finally {
+      await deleteTestUser(userId);
+    }
+  });
+
+  it("groups by month and scopes to a profile", async () => {
+    const { id: userId } = await createTestUser();
+    const profileId = await createTestProfile(MINIMAL_PERSONAL_INFO);
+    try {
+      await seedAt(userId, utcNoonDaysAgo(0));
+      await db.resume.updateMany({ where: { userId }, data: { profileId } });
+      // A second application with no profile — must be excluded by the profile filter.
+      await seedAt(userId, utcNoonDaysAgo(0));
+
+      const scoped = await getBidderApplicationCounts({ granularity: "month", profileId });
+      const row = scoped.bidders.find((b) => b.bidderId === userId);
+      expect(row?.total).toBe(1);
+    } finally {
+      await deleteTestProfile(profileId);
       await deleteTestUser(userId);
     }
   });

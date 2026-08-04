@@ -1,13 +1,60 @@
+import type { ReactNode } from "react";
 import { requireSuperAdmin } from "@/lib/auth/require-user";
-import { getDashboardAnalytics } from "@/lib/resumes/analytics";
+import {
+  getDashboardAnalytics,
+  getBidderApplicationCounts,
+  type BidderCountsGranularity,
+} from "@/lib/resumes/analytics";
 import { listAllProfiles } from "@/lib/admin/profiles";
 import { ProfileFilter } from "./profile-filter";
+import { BidderSection } from "./bidder-section";
 import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LineChart } from "@/components/line-chart";
+import { FileTextIcon, TargetIcon, CalendarIcon, AlertCircleIcon } from "@/components/icons";
 import { ROLE_TRACK_LABEL, SOURCE_LABEL } from "@/lib/resume-status";
+
+const ACCENT_CLASSES = {
+  primary: "text-primary bg-primary/10",
+  success: "text-success bg-success/10",
+  warning: "text-warning bg-warning/10",
+  muted: "text-muted-foreground bg-muted",
+} as const;
+
+function StatCard({
+  label,
+  value,
+  icon,
+  accent,
+}: {
+  label: string;
+  value: string;
+  icon: ReactNode;
+  accent: keyof typeof ACCENT_CLASSES;
+}) {
+  return (
+    <Card>
+      <CardContent className="flex items-center gap-4 p-5">
+        <div className={`flex size-11 shrink-0 items-center justify-center rounded-lg ${ACCENT_CLASSES[accent]}`}>
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-sm text-muted-foreground">{label}</div>
+          <div className="text-2xl font-bold tabular-nums text-foreground">{value}</div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Parses a YYYY-MM-DD query param into a UTC date, or undefined if absent/invalid. */
+function parseDateParam(value?: string): Date | undefined {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const d = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
 
 function StatRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
@@ -32,18 +79,26 @@ function weekLabel(weekStart: string): string {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ profile?: string }>;
+  searchParams: Promise<{ profile?: string; g?: string; from?: string; to?: string }>;
 }) {
   const admin = await requireSuperAdmin();
-  const { profile: requestedProfileId } = await searchParams;
+  const { profile: requestedProfileId, g, from, to } = await searchParams;
 
   const profiles = await listAllProfiles();
   const selectedProfile = requestedProfileId ? profiles.find((p) => p.id === requestedProfileId) : undefined;
   const selectedProfileId = selectedProfile?.id;
 
-  const { overview, byProfile, byRoleTrack, bySource, today, weekly } = await getDashboardAnalytics({
-    profileId: selectedProfileId,
-  });
+  const granularity: BidderCountsGranularity = g === "day" || g === "month" ? g : "week";
+
+  const [{ overview, byProfile, byRoleTrack, bySource, today, weekly }, bidderCounts] = await Promise.all([
+    getDashboardAnalytics({ profileId: selectedProfileId }),
+    getBidderApplicationCounts({
+      granularity,
+      from: parseDateParam(from),
+      to: parseDateParam(to),
+      profileId: selectedProfileId,
+    }),
+  ]);
   const weekLabels = weekly.map((w) => weekLabel(w.weekStart));
 
   return (
@@ -66,6 +121,37 @@ export default async function DashboardPage({
             />
           </div>
         </div>
+
+        {/* Headline KPIs */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="Total applications"
+            value={String(overview.total)}
+            icon={<FileTextIcon className="size-5" />}
+            accent="primary"
+          />
+          <StatCard
+            label="Positive response rate"
+            value={pct(overview.positiveResponseRate)}
+            icon={<TargetIcon className="size-5" />}
+            accent="success"
+          />
+          <StatCard
+            label="Awaiting response"
+            value={String(overview.awaitingResponse)}
+            icon={<CalendarIcon className="size-5" />}
+            accent="muted"
+          />
+          <StatCard
+            label="Needs follow-up today"
+            value={String(overview.needsFollowUpToday)}
+            icon={<AlertCircleIcon className="size-5" />}
+            accent="warning"
+          />
+        </div>
+
+        {/* Application counts per bidder (day / week / month / range) */}
+        <BidderSection data={bidderCounts} />
 
         <div className="grid gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-2">
