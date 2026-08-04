@@ -437,6 +437,21 @@ async function captureFullPage(tab, onProgress) {
 // the application generated from this page.
 // ---------------------------------------------------------------------------
 
+/** Native confirm() shown on the page; false if the page blocks injection or the user declines. */
+async function confirmInPage(tabId, message) {
+  if (tabId == null) return false;
+  try {
+    const [res] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (msg) => window.confirm(msg),
+      args: [message],
+    });
+    return Boolean(res && res.result);
+  } catch {
+    return false;
+  }
+}
+
 async function completeApplication(tab) {
   const { apiUrl, profileId, profileName } = await getSettings();
 
@@ -452,8 +467,8 @@ async function completeApplication(tab) {
   const job = {
     kind: "complete",
     status: "running",
-    stage: "Capturing the page…",
-    progress: 6,
+    stage: "Finding application…",
+    progress: 8,
     profileName: profileName || "",
     pageTitle: tab?.title || "",
     pageUrl: tab?.url || "",
@@ -476,9 +491,87 @@ async function completeApplication(tab) {
     if (notifyFn) notifyFn();
   };
 
-  // 1) Full-page screenshot (compressed).
+  const store = await chrome.storage.local.get({ appByUrl: {} });
+  const rec = (store.appByUrl || {})[tab?.url || ""];
+
+  // 1) Resolve which application this proof attaches to — WITHOUT uploading —
+  //    so a fallback can be confirmed with the user first.
+  let target;
+  try {
+    const params = new URLSearchParams();
+    if (profileId) params.set("profileId", profileId);
+    if (tab?.url) params.set("pageUrl", tab.url);
+    if (rec?.resumeId) params.set("resumeId", rec.resumeId);
+    const res = await fetch(apiBase(apiUrl) + "/api/ext/complete?" + params.toString(), {
+      method: "GET",
+      credentials: "include",
+    });
+    if (res.status === 401) {
+      await finish(
+        { status: "error", stage: "Not signed in", error: "Sign in to the Resume Platform from the extension options." },
+        () => notify("Please sign in", "Open the extension options to log in to the Resume Platform."),
+        { text: "!", color: "#b91c1c" }
+      );
+      openOptions();
+      return;
+    }
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}));
+      const message = detail.error || `Error ${res.status}`;
+      await finish(
+        { status: "error", stage: "Couldn't complete", error: message },
+        () => notify("Couldn't complete application", message),
+        { text: "!", color: "#b91c1c" }
+      );
+      return;
+    }
+    target = await res.json();
+  } catch (err) {
+    await finish(
+      { status: "error", stage: "Lookup failed", error: String(err?.message || err) },
+      () => notify("Couldn't complete application", String(err?.message || err)),
+      { text: "!", color: "#b91c1c" }
+    );
+    return;
+  }
+
+  if (!target || target.match === "none") {
+    await finish(
+      {
+        status: "error",
+        stage: "No application found",
+        error: "No application is linked to this page, and you have no applications without a screenshot yet.",
+      },
+      () => notify("No application found", "Generate a resume for this job first."),
+      { text: "!", color: "#b91c1c" }
+    );
+    return;
+  }
+
+  // 2) Page matched nothing → confirm attaching to the last unproofed application.
+  if (target.match === "fallback") {
+    const when = target.appliedAt ? ` (applied ${new Date(target.appliedAt).toLocaleDateString()})` : "";
+    const label = `${target.jobTitle || "Application"}${target.companyName ? " — " + target.companyName : ""}${when}`;
+    const ok = await confirmInPage(
+      activeTabId,
+      `No application is linked to this page.\n\nAttach this proof to your most recent application without a screenshot?\n\n${label}`
+    );
+    if (!ok) {
+      await finish(
+        { status: "error", stage: "Cancelled", error: "No proof was uploaded." },
+        () => notify("Cancelled", "No proof was uploaded."),
+        { text: "", color: null }
+      );
+      return;
+    }
+  }
+
+  // 3) Capture the full page (compressed).
+  job.stage = "Capturing the page…";
+  job.progress = 12;
+  await setJob(job);
   const screenshot = await captureFullPage(tab, async (frac) => {
-    job.progress = Math.min(70, Math.round(frac * 70));
+    job.progress = 12 + Math.min(66, Math.round(frac * 66));
     job.stage = `Capturing the page… ${Math.round(frac * 100)}%`;
     await setJob(job);
   });
@@ -492,13 +585,10 @@ async function completeApplication(tab) {
     return;
   }
 
-  // 2) Upload it as proof to the application built from this page.
+  // 4) Upload the proof to the resolved application.
   job.stage = "Uploading proof…";
-  job.progress = 85;
+  job.progress = 88;
   await setJob(job);
-
-  const store = await chrome.storage.local.get({ appByUrl: {} });
-  const rec = (store.appByUrl || {})[tab?.url || ""];
 
   try {
     const res = await fetch(apiBase(apiUrl) + "/api/ext/complete", {
@@ -507,7 +597,7 @@ async function completeApplication(tab) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         profileId: profileId || undefined,
-        resumeId: rec?.resumeId || undefined,
+        resumeId: target.resumeId || undefined,
         pageUrl: tab?.url,
         screenshot,
       }),
@@ -534,8 +624,8 @@ async function completeApplication(tab) {
     }
 
     const detail = await res.json().catch(() => ({}));
-    const company = detail.companyName || rec?.company || "";
-    const jobTitle = detail.jobTitle || rec?.jobTitle || "";
+    const company = detail.companyName || target.companyName || "";
+    const jobTitle = detail.jobTitle || target.jobTitle || "";
     const existingUrl = detail.resumeId ? apiBase(apiUrl) + "/resumes/" + detail.resumeId : "";
     await finish(
       { status: "done", stage: "Application completed", company, jobTitle, existingUrl },

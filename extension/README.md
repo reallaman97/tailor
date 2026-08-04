@@ -37,9 +37,15 @@ After you've actually finished applying on the job page, right-click →
    **proof-of-application screenshot** on the application generated from this
    page (matched by the id recorded at generate time, or by the page URL).
 
-Every step is shown in the on-page toast (capturing % → uploading → completed,
-or a clear error such as "No application found for this page"). When it's done
-the toast links straight to the application.
+**If the page isn't linked to any application** (e.g. you applied somewhere the
+extension didn't build a resume), it falls back to your **most recent
+application that has no screenshot yet** — and shows a **confirmation popup**
+naming that application before uploading. Confirm to attach the proof there, or
+cancel to do nothing. If you have no unproofed applications at all, it stops
+with a clear message.
+
+Every step is shown in the on-page toast (finding → capturing % → uploading →
+completed). When it's done the toast links straight to the application.
 
 ## Install (load unpacked)
 
