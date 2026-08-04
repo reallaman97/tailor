@@ -1,8 +1,11 @@
 // Shared helpers for the background service worker, options, and popup.
 
+/** Default platform URL — used until the user overrides it in the options page. */
+export const DEFAULT_API_URL = "https://cutejobplatform.space";
+
 /** Reads persisted settings (API URL + selected profile). Auth itself is the reused session cookie. */
 export async function getSettings() {
-  return chrome.storage.local.get({ apiUrl: "", profileId: "", profileName: "" });
+  return chrome.storage.local.get({ apiUrl: DEFAULT_API_URL, profileId: "", profileName: "" });
 }
 
 export async function setSettings(patch) {

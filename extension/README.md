@@ -25,8 +25,9 @@ here is the same account you use on the site.
 3. Click **Load unpacked** and select this `extension/` folder.
 4. Click the extension's **Details → Extension options** (or the toolbar icon →
    Settings) and:
-   - **API URL** — your platform's base URL (e.g. `https://your-app.vercel.app`
-     or `http://localhost:3000` for local dev). Click **Save URL**.
+   - **API URL** — defaults to `https://cutejobplatform.space`. Change it only
+     for another deployment (e.g. `http://localhost:3000` for local dev), then
+     click **Save URL**.
    - **Sign in** — email + password of a Resume Platform account (bidder or
      superadmin). This stores the same session cookie the website uses.
    - **Profile** — pick the candidate profile to build for (bidders have one;
