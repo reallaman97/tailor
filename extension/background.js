@@ -177,18 +177,6 @@ function filenameFromResponse(res, fallback) {
   return match ? match[1] : fallback;
 }
 
-/** Screenshot of the job page, stored as proof-of-application (like the web upload). */
-async function captureProof(tab) {
-  try {
-    const opts = { format: "jpeg", quality: 70 };
-    return tab?.windowId != null
-      ? await chrome.tabs.captureVisibleTab(tab.windowId, opts)
-      : await chrome.tabs.captureVisibleTab(opts);
-  } catch {
-    return null; // restricted page, or capture not permitted here
-  }
-}
-
 function decodeHeader(res, name) {
   const raw = res.headers.get(name);
   if (!raw) return "";
@@ -216,9 +204,9 @@ async function generate(jobDescription, tab) {
     return;
   }
 
-  // Capture proof of application from the clean job page BEFORE the toast
-  // overlay is injected (so the overlay isn't in the screenshot).
-  const screenshot = await captureProof(tab);
+  // Proof-of-application screenshot is left blank for now (the server records
+  // the application without one; the capture path can be re-enabled later).
+  const screenshot = undefined;
 
   // Show the in-page toast on the triggering tab right away.
   activeTabId = tab?.id ?? null;

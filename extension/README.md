@@ -11,19 +11,19 @@ here is the same account you use on the site.
 ## What it does
 
 1. You select a job description on any page and right-click → **Generate resume**.
-2. The extension captures a **screenshot of the job page** and sends it with the
-   selection and the **page URL** to the platform's `POST /api/ext/generate`.
-3. The server derives the company + job title and **records a full tracked
-   application** — exactly like the web "Build resume": job description, company,
-   title, role track, the **posting URL** (`jobLink`), source = Job Board,
-   status = Applied, and the **screenshot as proof of application** (pending
-   review). It then tailors the resume with AI in the profile's chosen PDF style
+2. The extension sends the selection and the **page URL** to the platform's
+   `POST /api/ext/generate`.
+3. The server derives the company + job title and **records a tracked
+   application** — like the web "Build resume": job description, company, title,
+   role track, the **posting URL** (`jobLink`), source = Job Board, status =
+   Applied. It then tailors the resume with AI in the profile's chosen PDF style
    and returns the PDF.
 4. The extension downloads it as `<profile-name>-<company>.pdf`.
 
-Everything the website stores for an application is stored here too, so
-extension-built resumes show up in the tracker with the same data (and appear in
-the superadmin proof-review queue).
+Extension-built resumes show up in the tracker with the same application data as
+the website. The **proof-of-application screenshot is left blank for now** — the
+server still accepts one (`screenshot` in the request body), so the capture can
+be re-enabled later without a server change.
 
 ## Install (load unpacked)
 
