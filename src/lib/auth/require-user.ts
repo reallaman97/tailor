@@ -3,7 +3,7 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { TOOLS, canAccessTool } from "@/lib/tools";
 
-export type Role = "SUPERADMIN" | "BIDDER" | "CALLER" | "MANAGER";
+export type Role = "SUPERADMIN" | "BIDDER" | "CALLER" | "MANAGER" | "SERVICE_ADMIN" | "TEAM_ADMIN";
 
 /**
  * The real auth boundary. Call this at the top of every server action, route

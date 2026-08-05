@@ -97,11 +97,72 @@ async function ensureSuperadmin(): Promise<void> {
   }
 }
 
+const DEFAULT_TEAM_ID = "team_default";
+
+/** Maps a legacy global User.role to the team-scoped role for its membership. */
+function teamRole(role: string): "TEAM_ADMIN" | "MANAGER" | "CALLER" | "BIDDER" {
+  if (role === "SUPERADMIN" || role === "TEAM_ADMIN") return "TEAM_ADMIN";
+  if (role === "MANAGER") return "MANAGER";
+  if (role === "CALLER") return "CALLER";
+  return "BIDDER";
+}
+
+/**
+ * Phase 1 tenancy backfill (idempotent): ensures a single default team, tags all
+ * existing data with it, clones the AppSettings singleton into that team's
+ * settings, and gives every non-platform user a membership carrying their
+ * current role. Behavior is unchanged — this just populates the new structures.
+ */
+async function ensureDefaultTenancy(): Promise<void> {
+  const team = await db.team.upsert({
+    where: { id: DEFAULT_TEAM_ID },
+    create: { id: DEFAULT_TEAM_ID, name: "Default Team" },
+    update: {},
+  });
+
+  await db.profile.updateMany({ where: { teamId: null }, data: { teamId: team.id } });
+  await db.resume.updateMany({ where: { teamId: null }, data: { teamId: team.id } });
+  await db.interview.updateMany({ where: { teamId: null }, data: { teamId: team.id } });
+  await db.interviewStage.updateMany({ where: { teamId: null }, data: { teamId: team.id } });
+  await db.interviewStatus.updateMany({ where: { teamId: null }, data: { teamId: team.id } });
+  await db.interviewMeetingType.updateMany({ where: { teamId: null }, data: { teamId: team.id } });
+
+  const app = await db.appSettings.findUnique({ where: { id: "singleton" } });
+  await db.teamSettings.upsert({
+    where: { teamId: team.id },
+    create: {
+      teamId: team.id,
+      openaiModel: app?.openaiModel ?? "gpt-4.1-mini",
+      openaiApiKeyEnc: app?.openaiApiKeyEnc ?? null,
+      tailoringPrompt: app?.tailoringPrompt ?? null,
+      resumeTemplate: app?.resumeTemplate ?? "MODERN",
+      interviewTimezone: app?.interviewTimezone ?? "UTC",
+      checkCountry: app?.checkCountry ?? "US",
+      checkWorkStyle: app?.checkWorkStyle ?? "REMOTE",
+      ...(app?.checkJobCategory ? { checkJobCategory: app.checkJobCategory } : {}),
+    },
+    update: {},
+  });
+
+  const users = await db.user.findMany({ select: { id: true, role: true, profileId: true } });
+  for (const u of users) {
+    if (u.role === "SERVICE_ADMIN") continue; // platform owner belongs to no team
+    await db.teamMembership.upsert({
+      where: { userId_teamId: { userId: u.id, teamId: team.id } },
+      create: { userId: u.id, teamId: team.id, role: teamRole(u.role), assignedProfileId: u.profileId },
+      update: {},
+    });
+  }
+
+  console.log(`✓ default tenancy ready (team ${team.id}; ${users.length} memberships ensured)`);
+}
+
 async function main(): Promise<void> {
   console.log("Running setup…");
   await ensureSettings();
   await ensureInterviewConfig();
   await ensureSuperadmin();
+  await ensureDefaultTenancy();
   console.log("Setup complete.");
 }
 

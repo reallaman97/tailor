@@ -22,7 +22,14 @@ export async function getAdminStats(): Promise<AdminStats> {
       db.interview.count({ where: { deletedAt: null } }),
     ]);
 
-  const usersByRole: Record<UserRole, number> = { SUPERADMIN: 0, BIDDER: 0, CALLER: 0, MANAGER: 0 };
+  const usersByRole: Record<UserRole, number> = {
+    SUPERADMIN: 0,
+    BIDDER: 0,
+    CALLER: 0,
+    MANAGER: 0,
+    SERVICE_ADMIN: 0,
+    TEAM_ADMIN: 0,
+  };
   for (const g of roleGroups) usersByRole[g.role] = g._count._all;
 
   return { totalUsers, pendingApprovals, usersByRole, totalProfiles, totalApplications, totalInterviews };

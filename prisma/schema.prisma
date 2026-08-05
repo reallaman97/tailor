@@ -19,6 +19,13 @@ enum UserRole {
   // Interview Management operator: full CRUD on interviews, assigns callers,
   // and configures interview settings. Distinct from BIDDER (Resume Platform).
   MANAGER
+  // Platform owner ("Service Real Admin") — controls Teams and can act inside
+  // any team. Belongs to no single team. (Phase 2 migrates today's SUPERADMIN
+  // accounts to this.) Appended at the end to keep the enum change additive.
+  SERVICE_ADMIN
+  // Per-team admin — today's SUPERADMIN powers, scoped to one team; used as the
+  // role on TeamMembership. (Phase 2 wires auth to team-scoped roles.)
+  TEAM_ADMIN
 }
 
 model User {
@@ -64,6 +71,11 @@ model User {
   // Connected external calendar (Google/Outlook) whose events overlay the
   // interview calendar. One per user for now.
   calendarConnection CalendarConnection?
+
+  // Multi-tenancy (Phase 1, additive): a user can belong to several teams, with
+  // a team-scoped role per membership. `role`/`profileId` above stay
+  // authoritative until the Phase 2 auth cutover.
+  memberships TeamMembership[]
 
   @@index([profileId])
 }
@@ -123,6 +135,12 @@ model Profile {
   skillGroups    SkillGroup[]
   resumes        Resume[]
   interviews     Interview[]
+
+  // Multi-tenancy (Phase 1, additive; backfilled, required after Phase 2).
+  teamId String?
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
 }
 
 enum WorkingStyle {
@@ -308,11 +326,16 @@ model Resume {
   // Cached application-checking verdict (see ApplicationCheck).
   check       ApplicationCheck?
 
+  // Multi-tenancy (Phase 1, additive; backfilled from the owner/profile).
+  teamId String?
+  team   Team?  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([profileId])
   @@index([userId, roleTrack])
   @@index([userId, source])
   @@index([approvalStatus])
+  @@index([teamId])
 }
 
 // ── LLM usage tracking (cost visibility + rate limiting) ──
@@ -438,7 +461,12 @@ model InterviewStage {
 
   interviews Interview[]
 
+  // Multi-tenancy (Phase 1, additive; each team configures its own lists).
+  teamId String?
+  team   Team?  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
   @@index([active, sortOrder])
+  @@index([teamId])
 }
 
 model InterviewStatus {
@@ -455,7 +483,12 @@ model InterviewStatus {
 
   interviews Interview[]
 
+  // Multi-tenancy (Phase 1, additive; each team configures its own lists).
+  teamId String?
+  team   Team?  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
   @@index([active, sortOrder])
+  @@index([teamId])
 }
 
 model InterviewMeetingType {
@@ -469,7 +502,12 @@ model InterviewMeetingType {
 
   interviews Interview[]
 
+  // Multi-tenancy (Phase 1, additive; each team configures its own lists).
+  teamId String?
+  team   Team?  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
   @@index([active, sortOrder])
+  @@index([teamId])
 }
 
 model Interview {
@@ -542,12 +580,17 @@ model Interview {
   // External calendar events matched/linked to this interview.
   externalEvents ExternalEvent[]
 
+  // Multi-tenancy (Phase 1, additive; backfilled, required after Phase 2).
+  teamId String?
+  team   Team?  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
   @@index([callerId])
   @@index([statusId])
   @@index([stageId])
   @@index([scheduledAt])
   @@index([applicationId])
   @@index([deletedAt])
+  @@index([teamId])
 }
 
 model InterviewReferenceFile {
@@ -668,4 +711,71 @@ model ExternalEvent {
   @@unique([connectionId, externalId])
   @@index([userId, startsAt])
   @@index([icalUid])
+}
+
+// ── Multi-tenancy (Teams) ─────────────────────────────
+// Phase 1 is additive: these models + nullable teamId columns are backfilled by
+// scripts/setup.ts into a single default team, with no behavior change yet. The
+// Phase 2 auth cutover moves role resolution to TeamMembership and enforces the
+// team scope everywhere; teamId becomes required then.
+
+model Team {
+  id        String   @id @default(cuid())
+  name      String
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships           TeamMembership[]
+  settings              TeamSettings?
+  profiles              Profile[]
+  resumes               Resume[]
+  interviews            Interview[]
+  interviewStages       InterviewStage[]
+  interviewStatuses     InterviewStatus[]
+  interviewMeetingTypes InterviewMeetingType[]
+
+  @@index([active])
+}
+
+// A user's membership in a team, with the role they hold *in that team*. The
+// same account can be TEAM_ADMIN in one team and CALLER in another. A bidder's
+// assigned profile is per-team, so it lives here too.
+model TeamMembership {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  role             UserRole @default(BIDDER) // team-scoped role (TEAM_ADMIN/MANAGER/CALLER/BIDDER)
+  assignedProfileId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, teamId])
+  @@index([teamId])
+}
+
+// Per-team settings — the old AppSettings singleton, one row per team. Each team
+// brings its own OpenAI key (openaiApiKeyEnc); generation/checks require it.
+model TeamSettings {
+  id     String @id @default(cuid())
+  teamId String @unique
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  openaiModel     String         @default("gpt-4.1-mini")
+  openaiApiKeyEnc String?
+  tailoringPrompt String?        @db.Text
+  resumeTemplate  ResumeTemplate @default(MODERN)
+
+  interviewTimezone String @default("UTC")
+
+  checkCountry     String @default("US")
+  checkWorkStyle   String @default("REMOTE")
+  checkJobCategory String @default("Computer Science / software roles: software engineering, AI/ML, DevOps, data engineering, security, IT, cloud, and closely related technical fields.") @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
