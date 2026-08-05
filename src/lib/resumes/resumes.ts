@@ -197,11 +197,17 @@ export type ListResumesFilter = {
   approvalStatus?: ApprovalStatus;
 };
 
+/**
+ * A bidder's own Applications list — scoped to what THEY personally logged
+ * (userId), so a bidder sees only their own applications, not the whole
+ * shared-profile tracker. (A superadmin uses listAllApplications to see
+ * everyone's.) Shared-profile operations — proof upload, duplicate detection,
+ * opening a specific entry — still span teammates via scopeFilter.
+ */
 export async function listResumes(userId: string, filter: ListResumesFilter = {}): Promise<ResumeSummary[]> {
-  const scope = await scopeFilter(userId);
   const resumes = await db.resume.findMany({
     where: {
-      ...scope,
+      userId,
       ...(filter.status ? { statuses: { has: filter.status } } : {}),
       ...(filter.roleTrack ? { roleTrack: filter.roleTrack } : {}),
       ...(filter.source ? { source: filter.source } : {}),

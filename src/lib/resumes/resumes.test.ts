@@ -287,13 +287,17 @@ describe("resumes (integration)", () => {
           jobDescription: "A description that is definitely long enough to pass validation.",
         });
 
-        // Teammate B (same profile, didn't create it) can see it via their own tracker view.
+        // Teammate B (same profile, didn't create it) can still open it directly.
         const bView = await getResume(teammateBId, id);
         expect(bView).not.toBeNull();
         expect(bView?.appliedByEmail).not.toBeNull();
 
+        // ...but B's Applications list shows only what B personally logged, not
+        // teammate A's entry.
         const listForB = await listResumes(teammateBId);
-        expect(listForB.some((r) => r.id === id)).toBe(true);
+        expect(listForB.some((r) => r.id === id)).toBe(false);
+        const listForA = await listResumes(teammateAId);
+        expect(listForA.some((r) => r.id === id)).toBe(true);
 
         // Teammate B can upload proof for an entry teammate A created.
         await uploadScreenshot(teammateBId, id, Buffer.from("teammate-b-upload"), "image/png");
