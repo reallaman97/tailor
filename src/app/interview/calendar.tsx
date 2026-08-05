@@ -8,6 +8,7 @@ import { InterviewStatusPill } from "@/app/interview/status-pill";
 import { zonedDayKey, zonedYmd, formatInterviewClock } from "@/lib/interview/timezone";
 import { cn } from "@/lib/utils";
 import type { InterviewSummary } from "@/lib/interview/interviews";
+import type { ExternalCalendarEvent } from "@/lib/calendar/events";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -31,9 +32,11 @@ const ymdOf = (ms: number): Ymd => {
  */
 export function InterviewCalendar({
   interviews,
+  externalEvents = [],
   timezone,
 }: {
   interviews: InterviewSummary[];
+  externalEvents?: ExternalCalendarEvent[];
   timezone: string;
 }) {
   const router = useRouter();
@@ -59,9 +62,30 @@ export function InterviewCalendar({
     return map;
   }, [interviews, timezone]);
 
+  // External (email/Google) events bucketed the same way, minus any already
+  // linked to a tracked interview (so they aren't shown twice).
+  const extByDay = useMemo(() => {
+    const map = new Map<string, ExternalCalendarEvent[]>();
+    for (const e of externalEvents) {
+      if (e.linkedInterviewId) continue;
+      const key = zonedDayKey(e.startsAt, timezone);
+      const list = map.get(key);
+      if (list) list.push(e);
+      else map.set(key, [e]);
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.startsAt.getTime() - b.startsAt.getTime());
+    }
+    return map;
+  }, [externalEvents, timezone]);
+
   const unscheduled = useMemo(() => interviews.filter((i) => !i.scheduledAt), [interviews]);
 
   const open = (id: string) => router.push(`/interview/${id}`);
+  const openExternal = (e: ExternalCalendarEvent) => {
+    if (e.linkedInterviewId) router.push(`/interview/${e.linkedInterviewId}`);
+    else if (e.htmlLink) window.open(e.htmlLink, "_blank", "noopener");
+  };
 
   // Navigation steps by the active unit.
   const step = (delta: number) => {
@@ -101,14 +125,49 @@ export function InterviewCalendar({
         </div>
       </div>
 
+      {externalEvents.length > 0 && (
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-3 w-1 rounded-full bg-primary" /> Interview
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block h-3 w-1 rounded-full border border-dashed border-muted-foreground" /> Calendar event
+          </span>
+        </div>
+      )}
+
       {mode === "month" && (
-        <MonthView anchor={anchor} byDay={byDay} todayKey={todayKey} timezone={timezone} onOpen={open} />
+        <MonthView
+          anchor={anchor}
+          byDay={byDay}
+          extByDay={extByDay}
+          todayKey={todayKey}
+          timezone={timezone}
+          onOpen={open}
+          onOpenExternal={openExternal}
+        />
       )}
       {mode === "week" && (
-        <WeekView anchor={anchor} byDay={byDay} todayKey={todayKey} timezone={timezone} onOpen={open} />
+        <WeekView
+          anchor={anchor}
+          byDay={byDay}
+          extByDay={extByDay}
+          todayKey={todayKey}
+          timezone={timezone}
+          onOpen={open}
+          onOpenExternal={openExternal}
+        />
       )}
       {mode === "day" && (
-        <DayView anchor={anchor} byDay={byDay} todayKey={todayKey} timezone={timezone} onOpen={open} />
+        <DayView
+          anchor={anchor}
+          byDay={byDay}
+          extByDay={extByDay}
+          todayKey={todayKey}
+          timezone={timezone}
+          onOpen={open}
+          onOpenExternal={openExternal}
+        />
       )}
 
       {unscheduled.length > 0 && (
@@ -138,12 +197,14 @@ export function InterviewCalendar({
 type ViewProps = {
   anchor: Ymd;
   byDay: Map<string, InterviewSummary[]>;
+  extByDay: Map<string, ExternalCalendarEvent[]>;
   todayKey: string;
   timezone: string;
   onOpen: (id: string) => void;
+  onOpenExternal: (event: ExternalCalendarEvent) => void;
 };
 
-function MonthView({ anchor, byDay, todayKey, timezone, onOpen }: ViewProps) {
+function MonthView({ anchor, byDay, extByDay, todayKey, timezone, onOpen, onOpenExternal }: ViewProps) {
   const m0 = anchor.month - 1;
   const firstWeekday = new Date(Date.UTC(anchor.year, m0, 1)).getUTCDay();
   const daysInMonth = new Date(Date.UTC(anchor.year, m0 + 1, 0)).getUTCDate();
@@ -166,6 +227,7 @@ function MonthView({ anchor, byDay, todayKey, timezone, onOpen }: ViewProps) {
           if (day === null) return <div key={idx} className="min-h-24 bg-background/40" />;
           const key = keyOf(anchor.year, anchor.month, day);
           const items = byDay.get(key) ?? [];
+          const exts = extByDay.get(key) ?? [];
           const isToday = key === todayKey;
           return (
             <div key={idx} className="min-h-24 bg-card p-1.5">
@@ -181,6 +243,9 @@ function MonthView({ anchor, byDay, todayKey, timezone, onOpen }: ViewProps) {
                 {items.map((i) => (
                   <EventChip key={i.id} interview={i} timezone={timezone} onOpen={onOpen} />
                 ))}
+                {exts.map((e) => (
+                  <ExternalChip key={e.id} event={e} timezone={timezone} onOpen={onOpenExternal} />
+                ))}
               </div>
             </div>
           );
@@ -190,7 +255,7 @@ function MonthView({ anchor, byDay, todayKey, timezone, onOpen }: ViewProps) {
   );
 }
 
-function WeekView({ anchor, byDay, todayKey, timezone, onOpen }: ViewProps) {
+function WeekView({ anchor, byDay, extByDay, todayKey, timezone, onOpen, onOpenExternal }: ViewProps) {
   const days = weekDays(anchor);
   return (
     <div className="overflow-x-auto">
@@ -216,12 +281,18 @@ function WeekView({ anchor, byDay, todayKey, timezone, onOpen }: ViewProps) {
         {days.map((d) => {
           const key = keyOf(d.year, d.month, d.day);
           const items = byDay.get(key) ?? [];
+          const exts = extByDay.get(key) ?? [];
           return (
             <div key={`body-${key}`} className="min-h-[16rem] bg-card p-1.5">
               <div className="flex flex-col gap-1">
-                {items.length === 0 && <span className="px-1 text-[11px] text-muted-foreground">—</span>}
+                {items.length === 0 && exts.length === 0 && (
+                  <span className="px-1 text-[11px] text-muted-foreground">—</span>
+                )}
                 {items.map((i) => (
                   <EventChip key={i.id} interview={i} timezone={timezone} onOpen={onOpen} />
+                ))}
+                {exts.map((e) => (
+                  <ExternalChip key={e.id} event={e} timezone={timezone} onOpen={onOpenExternal} />
                 ))}
               </div>
             </div>
@@ -232,9 +303,10 @@ function WeekView({ anchor, byDay, todayKey, timezone, onOpen }: ViewProps) {
   );
 }
 
-function DayView({ anchor, byDay, todayKey, timezone, onOpen }: ViewProps) {
+function DayView({ anchor, byDay, extByDay, todayKey, timezone, onOpen, onOpenExternal }: ViewProps) {
   const key = keyOf(anchor.year, anchor.month, anchor.day);
   const items = byDay.get(key) ?? [];
+  const exts = extByDay.get(key) ?? [];
   const isToday = key === todayKey;
 
   return (
@@ -249,7 +321,9 @@ function DayView({ anchor, byDay, todayKey, timezone, onOpen }: ViewProps) {
         {isToday && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">Today</span>}
       </div>
       <div className="flex flex-col divide-y divide-border">
-        {items.length === 0 && <p className="px-4 py-8 text-center text-sm text-muted-foreground">No interviews.</p>}
+        {items.length === 0 && exts.length === 0 && (
+          <p className="px-4 py-8 text-center text-sm text-muted-foreground">Nothing scheduled.</p>
+        )}
         {items.map((i) => (
           <button
             key={i.id}
@@ -272,6 +346,26 @@ function DayView({ anchor, byDay, todayKey, timezone, onOpen }: ViewProps) {
             </span>
             <StageBadge stage={i.stage} />
             <InterviewStatusPill status={i.status} />
+          </button>
+        ))}
+        {exts.map((e) => (
+          <button
+            key={e.id}
+            type="button"
+            onClick={() => onOpenExternal(e)}
+            className="flex items-center gap-3 px-4 py-3 text-left hover:bg-muted"
+          >
+            <span className="w-20 shrink-0 text-sm font-medium text-muted-foreground">
+              {e.allDay ? "All day" : formatInterviewClock(e.startsAt, timezone)}
+            </span>
+            <span className="h-8 w-1 shrink-0 rounded-full border border-dashed border-muted-foreground" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-foreground">{e.title}</span>
+              {e.location && <span className="text-xs text-muted-foreground">{e.location}</span>}
+            </span>
+            <span className="shrink-0 rounded border border-dashed border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              Calendar
+            </span>
           </button>
         ))}
       </div>
@@ -303,6 +397,29 @@ function EventChip({
         <StageBadge stage={interview.stage} />
       </span>
       <span className="truncate font-medium text-foreground">{interview.companyName}</span>
+    </button>
+  );
+}
+
+/** A synced calendar (email/Google) event — dashed accent to distinguish it from a tracked interview. */
+function ExternalChip({
+  event,
+  timezone,
+  onOpen,
+}: {
+  event: ExternalCalendarEvent;
+  timezone: string;
+  onOpen: (event: ExternalCalendarEvent) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen(event)}
+      title={`${event.title}${event.location ? ` · ${event.location}` : ""}`}
+      className="flex w-full items-center gap-1 rounded border border-dashed border-border px-1 py-0.5 text-left text-[11px] text-muted-foreground hover:bg-muted"
+    >
+      <span className="shrink-0">{event.allDay ? "All day" : formatInterviewClock(event.startsAt, timezone)}</span>
+      <span className="truncate font-medium text-foreground">{event.title}</span>
     </button>
   );
 }

@@ -61,6 +61,9 @@ model User {
   interviewFiles     InterviewReferenceFile[]
   // Recurring weekly availability a Caller submits; managers view it in aggregate.
   availability       CallerAvailability[]
+  // Connected external calendar (Google/Outlook) whose events overlay the
+  // interview calendar. One per user for now.
+  calendarConnection CalendarConnection?
 
   @@index([profileId])
 }
@@ -536,6 +539,8 @@ model Interview {
 
   referenceFiles InterviewReferenceFile[]
   comments       InterviewComment[]
+  // External calendar events matched/linked to this interview.
+  externalEvents ExternalEvent[]
 
   @@index([callerId])
   @@index([statusId])
@@ -596,4 +601,71 @@ model CallerAvailability {
 
   @@unique([userId, dayOfWeek, hour])
   @@index([userId])
+}
+
+/**
+ * A user's connected external calendar (Google now; Outlook later). Tokens are
+ * encrypted with the app master key (same envelope scheme as profile DEKs).
+ * One connection per user for now (@unique userId).
+ */
+model CalendarConnection {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  provider      String  @default("google") // google | microsoft
+  accountEmail  String? // the connected calendar account, for display
+
+  accessTokenEnc  String   @db.Text
+  refreshTokenEnc String?  @db.Text
+  expiresAt       DateTime // access-token expiry
+
+  syncToken   String? @db.Text // provider incremental-sync cursor
+  status      String  @default("active") // active | needs_reauth
+  lastSyncedAt DateTime?
+  lastError    String?  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events ExternalEvent[]
+
+  @@index([status])
+}
+
+/**
+ * One event pulled from a connected calendar, overlaid on the interview
+ * calendar. `linkedInterviewId` ties it to a tracked Interview (matched by
+ * iCal UID or confirmed by a manager) so the two aren't shown twice.
+ */
+model ExternalEvent {
+  id           String             @id @default(cuid())
+  connectionId String
+  connection   CalendarConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  userId       String // denormalized owner, for scoping/queries
+
+  provider   String  @default("google")
+  externalId String // provider event id (stable within a calendar)
+  icalUid    String? // cross-provider invite id, for matching to interviews
+
+  title       String  @default("(no title)")
+  description String? @db.Text
+  location    String?
+  organizer   String?
+  htmlLink    String?
+
+  startsAt DateTime
+  endsAt   DateTime?
+  allDay   Boolean  @default(false)
+  status   String   @default("confirmed") // confirmed | cancelled
+
+  linkedInterviewId String?
+  linkedInterview   Interview? @relation(fields: [linkedInterviewId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([connectionId, externalId])
+  @@index([userId, startsAt])
+  @@index([icalUid])
 }
