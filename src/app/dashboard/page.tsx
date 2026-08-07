@@ -107,7 +107,9 @@ export default async function DashboardPage({
   const selectedProfile = requestedProfileId ? profiles.find((p) => p.id === requestedProfileId) : undefined;
   const selectedProfileId = selectedProfile?.id;
 
-  const granularity: BidderCountsGranularity = g === "day" || g === "month" ? g : "week";
+  // Default to a daily view (last 14 days) so today's and this week's activity
+  // is visible per-day up to the current date; Week/Month remain one click away.
+  const granularity: BidderCountsGranularity = g === "week" || g === "month" ? g : "day";
 
   const [{ overview, byProfile, byRoleTrack, bySource, today, weekly }, bidderCounts] = await Promise.all([
     getDashboardAnalytics({ profileId: selectedProfileId, teamId }),

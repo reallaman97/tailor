@@ -528,6 +528,16 @@ function periodLabel(key: string, g: BidderCountsGranularity): string {
   const d = new Date(`${key}T00:00:00.000Z`);
   const mon = MONTH_ABBR[d.getUTCMonth()];
   if (g === "month") return `${mon} ${d.getUTCFullYear()}`;
+  if (g === "week") {
+    // Label the whole week (Mon–Sun) so the current week reads e.g. "Aug 3–9"
+    // rather than just its start ("Aug 3"), which looked like the data stopped
+    // at the Monday and hid the in-progress current week.
+    const end = addDaysUTC(d, 6);
+    const endMon = MONTH_ABBR[end.getUTCMonth()];
+    return d.getUTCMonth() === end.getUTCMonth()
+      ? `${mon} ${d.getUTCDate()}–${end.getUTCDate()}`
+      : `${mon} ${d.getUTCDate()} – ${endMon} ${end.getUTCDate()}`;
+  }
   return `${mon} ${d.getUTCDate()}`;
 }
 
