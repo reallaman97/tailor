@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireSuperAdmin } from "@/lib/auth/require-user";
+import { requireTeamAdmin } from "@/lib/auth/team-context";
 import { runPendingChecks, updateCheckCriteria } from "@/lib/checks/application-checks";
 import type { WorkStyle } from "@/lib/checks/application-checks";
 
@@ -16,7 +17,8 @@ export type RunState = { ok?: string; error?: string } | undefined;
 
 /** Checks pending (missing/stale) applications in the current filter, in as few LLM calls as possible. */
 export async function runChecksAction(_prev: RunState, formData: FormData): Promise<RunState> {
-  await requireSuperAdmin();
+  const ctx = await requireTeamAdmin();
+  const teamId = ctx.activeTeamId ?? undefined;
 
   const from = parseDate(formData.get("from"));
   const toRaw = parseDate(formData.get("to"));
@@ -26,7 +28,7 @@ export async function runChecksAction(_prev: RunState, formData: FormData): Prom
   const profileId = (formData.get("profile") as string) || undefined;
 
   try {
-    const r = await runPendingChecks({ from, to, bidderId, profileId });
+    const r = await runPendingChecks({ from, to, bidderId, profileId, teamId });
     revalidatePath("/checks");
     if (r.checked === 0) return { ok: "Everything in range is already checked." };
     const remaining = r.remaining > 0 ? ` ${r.remaining} still pending — run again.` : "";

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { requireSuperAdmin } from "@/lib/auth/require-user";
+import { requireTeamAdmin } from "@/lib/auth/team-context";
 import {
   getDashboardAnalytics,
   getBidderApplicationCounts,
@@ -79,22 +79,24 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ profile?: string; g?: string; from?: string; to?: string }>;
 }) {
-  const admin = await requireSuperAdmin();
+  const admin = await requireTeamAdmin();
+  const teamId = admin.activeTeamId ?? undefined;
   const { profile: requestedProfileId, g, from, to } = await searchParams;
 
-  const profiles = await listAllProfiles();
+  const profiles = await listAllProfiles(teamId);
   const selectedProfile = requestedProfileId ? profiles.find((p) => p.id === requestedProfileId) : undefined;
   const selectedProfileId = selectedProfile?.id;
 
   const granularity: BidderCountsGranularity = g === "day" || g === "month" ? g : "week";
 
   const [{ overview, byProfile, byRoleTrack, bySource, today, weekly }, bidderCounts] = await Promise.all([
-    getDashboardAnalytics({ profileId: selectedProfileId }),
+    getDashboardAnalytics({ profileId: selectedProfileId, teamId }),
     getBidderApplicationCounts({
       granularity,
       from: parseDateParam(from),
       to: parseDateParam(to),
       profileId: selectedProfileId,
+      teamId,
     }),
   ]);
   const weekLabels = weekly.map((w) => weekLabel(w.weekStart));

@@ -3,6 +3,7 @@ import { requireResumePlatformAccess } from "@/lib/auth/require-user";
 import { hasTeamAdminPower } from "@/lib/auth/roles";
 import { listResumes } from "@/lib/resumes/resumes";
 import { listAllApplications } from "@/lib/admin/applications";
+import { getTeamContext } from "@/lib/auth/team-context";
 import { AdminApplicationsTable } from "./admin-applications-table";
 import { UserApplicationsTable } from "./user-applications-table";
 import { AppShell } from "@/components/app-shell";
@@ -16,7 +17,8 @@ export default async function ResumesPage() {
   const isSuperAdmin = hasTeamAdminPower(user.role);
 
   if (isSuperAdmin) {
-    const applications = await listAllApplications();
+    const ctx = await getTeamContext();
+    const applications = await listAllApplications({ teamId: ctx?.activeTeamId ?? undefined });
 
     return (
       <AppShell userEmail={user.email} isSuperAdmin wide>

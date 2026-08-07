@@ -153,11 +153,26 @@ async function findDuplicate(
   });
 }
 
+/** The team an application belongs to — the profile's team, else the creator's team. Null when neither has one. */
+async function resolveTeamId(userId: string, profileId: string | null): Promise<string | null> {
+  if (profileId) {
+    const profile = await db.profile.findUnique({ where: { id: profileId }, select: { teamId: true } });
+    if (profile?.teamId) return profile.teamId;
+  }
+  const membership = await db.teamMembership.findFirst({
+    where: { userId },
+    orderBy: { createdAt: "asc" },
+    select: { teamId: true },
+  });
+  return membership?.teamId ?? null;
+}
+
 export async function createResume(userId: string, input: CreateResumeInput): Promise<string> {
   const profileId = await getAssignedProfileId(userId);
   const scope: { profileId: string } | { userId: string; profileId: null } = profileId
     ? { profileId }
     : { userId, profileId: null };
+  const teamId = await resolveTeamId(userId, profileId);
 
   // Normalized once here, so both the duplicate check and the stored value
   // see the same canonical link — trims tracking params/hash/trailing slash
@@ -174,6 +189,7 @@ export async function createResume(userId: string, input: CreateResumeInput): Pr
     data: {
       userId,
       profileId,
+      teamId,
       companyName: input.companyName,
       jobTitle: input.jobTitle,
       jobLink: jobLink || null,

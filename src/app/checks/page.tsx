@@ -1,4 +1,4 @@
-import { requireSuperAdmin } from "@/lib/auth/require-user";
+import { requireTeamAdmin } from "@/lib/auth/team-context";
 import { db } from "@/lib/db";
 import {
   listApplicationChecks,
@@ -64,7 +64,8 @@ export default async function ChecksPage({
 }: {
   searchParams: Promise<{ from?: string; to?: string; bidder?: string }>;
 }) {
-  const admin = await requireSuperAdmin();
+  const admin = await requireTeamAdmin();
+  const teamId = admin.activeTeamId ?? undefined;
   const { from, to, bidder } = await searchParams;
 
   const now = new Date();
@@ -78,12 +79,21 @@ export default async function ChecksPage({
   const bidderId = bidder || "";
 
   const [{ criteria, applications, summary }, bidderRows] = await Promise.all([
-    listApplicationChecks({ from: fromDate, to: toExclusive, bidderId: bidderId || undefined }),
-    db.user.findMany({
-      where: { role: "BIDDER" },
-      select: { id: true, username: true, email: true },
-      orderBy: { username: "asc" },
-    }),
+    listApplicationChecks({ from: fromDate, to: toExclusive, bidderId: bidderId || undefined, teamId }),
+    // Bidders to offer in the filter: this team's members (or all, unscoped).
+    teamId
+      ? db.teamMembership
+          .findMany({
+            where: { teamId, role: "BIDDER" },
+            select: { user: { select: { id: true, username: true, email: true } } },
+            orderBy: { user: { username: "asc" } },
+          })
+          .then((rows) => rows.map((r) => r.user))
+      : db.user.findMany({
+          where: { role: "BIDDER" },
+          select: { id: true, username: true, email: true },
+          orderBy: { username: "asc" },
+        }),
   ]);
   const bidders = bidderRows.map((b) => ({ id: b.id, name: b.username ?? b.email }));
 

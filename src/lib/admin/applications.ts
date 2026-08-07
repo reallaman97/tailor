@@ -194,6 +194,8 @@ export type AdminTrackerFilter = {
   approvalStatus?: ApprovalStatus;
   userId?: string;
   profileId?: string;
+  /** Scope to one team's applications (multi-tenancy). Omitted = all teams. */
+  teamId?: string;
 };
 
 /** The superadmin's view of every user's tracker — default sort is applied date/time newest first. */
@@ -206,6 +208,7 @@ export async function listAllApplications(filter: AdminTrackerFilter = {}): Prom
       ...(filter.approvalStatus ? { approvalStatus: filter.approvalStatus } : {}),
       ...(filter.userId ? { userId: filter.userId } : {}),
       ...(filter.profileId ? { profileId: filter.profileId } : {}),
+      ...(filter.teamId ? { teamId: filter.teamId } : {}),
     },
     orderBy: [{ appliedAt: "desc" }, { createdAt: "desc" }],
     include: { user: { select: { id: true, email: true, username: true } } },

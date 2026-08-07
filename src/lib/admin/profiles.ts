@@ -11,8 +11,9 @@ export type AdminProfileSummary = {
   createdAt: Date;
 };
 
-export async function listAllProfiles(): Promise<AdminProfileSummary[]> {
+export async function listAllProfiles(teamId?: string): Promise<AdminProfileSummary[]> {
   const profiles = await db.profile.findMany({
+    where: teamId ? { teamId } : {},
     orderBy: { createdAt: "asc" },
     include: { users: { select: { id: true, email: true }, orderBy: { email: "asc" } } },
   });

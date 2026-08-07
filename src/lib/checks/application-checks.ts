@@ -136,10 +136,13 @@ export type ChecksFilter = {
   to?: Date; // exclusive upper bound
   profileId?: string;
   bidderId?: string;
+  /** Scope to one team (multi-tenancy). Omitted = all teams. */
+  teamId?: string;
 };
 
 function scopeWhere(filter: ChecksFilter): Prisma.ResumeWhereInput {
   const where: Prisma.ResumeWhereInput = {};
+  if (filter.teamId) where.teamId = filter.teamId;
   if (filter.profileId) where.profileId = filter.profileId;
   if (filter.bidderId) where.userId = filter.bidderId;
   if (filter.from || filter.to) {

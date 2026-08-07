@@ -100,6 +100,8 @@ function classifyTrend(status: ResumeStatus): keyof TrendCounts | null {
 export type DashboardAnalyticsFilter = {
   /** Scopes every section of the dashboard to one candidate profile. Omitted (or undefined) means every profile combined. */
   profileId?: string;
+  /** Scopes to one team's applications (multi-tenancy). Omitted = all teams. */
+  teamId?: string;
 };
 
 /**
@@ -109,7 +111,10 @@ export type DashboardAnalyticsFilter = {
  */
 export async function getDashboardAnalytics(filter: DashboardAnalyticsFilter = {}): Promise<DashboardAnalytics> {
   const resumes = await db.resume.findMany({
-    where: filter.profileId ? { profileId: filter.profileId } : {},
+    where: {
+      ...(filter.teamId ? { teamId: filter.teamId } : {}),
+      ...(filter.profileId ? { profileId: filter.profileId } : {}),
+    },
     select: {
       statuses: true,
       roleTrack: true,
@@ -279,6 +284,8 @@ export type BidderCountsFilter = {
   to?: Date;
   /** Scope to one candidate profile's applications. */
   profileId?: string;
+  /** Scope to one team's applications (multi-tenancy). Omitted = all teams. */
+  teamId?: string;
 };
 
 export type BidderCountsRow = {
@@ -374,6 +381,7 @@ export async function getBidderApplicationCounts(filter: BidderCountsFilter): Pr
 
   const resumes = await db.resume.findMany({
     where: {
+      ...(filter.teamId ? { teamId: filter.teamId } : {}),
       ...(filter.profileId ? { profileId: filter.profileId } : {}),
       createdAt: { gte: effectiveFrom, lt: windowEnd },
     },
