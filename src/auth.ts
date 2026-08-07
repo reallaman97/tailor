@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { verifyPassword } from "@/lib/auth/password";
 import { consumeRateLimit, RateLimitExceededError } from "@/lib/rate-limit";
 import { clientIpFromHeaders } from "@/lib/request-ip";
+import { resolveUserTeams, effectiveAccessRole, pickActiveTeam } from "@/lib/auth/team-resolve";
 
 // Login is throttled per client IP, counting every attempt, so brute force is
 // bounded no matter how the attempts interleave. Deliberately NOT keyed on the
@@ -18,7 +19,7 @@ export class AccountPendingApprovalError extends CredentialsSignin {
   code = "account-pending-approval";
 }
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
@@ -60,22 +61,38 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    jwt: async ({ token, user }) => {
-      if (user) {
+    jwt: async ({ token, user, trigger, session }) => {
+      if (user?.id) {
+        // Fresh sign-in (Node context, DB available). Bake in the active team
+        // and the role the middleware gates on — defaulting to the user's first
+        // team. Switching teams updates these via unstable_update (below).
         token.id = user.id;
-        token.role = user.role;
+        const { isServiceAdmin, globalRole, teams } = await resolveUserTeams(user.id);
+        const active = pickActiveTeam(teams, null);
+        token.activeTeamId = active?.id ?? null;
+        token.role = effectiveAccessRole({ isServiceAdmin, globalRole, activeRole: active?.role ?? null });
+      } else if (trigger === "update" && session && typeof session === "object") {
+        // Team switch: the server action already computed the new team + role
+        // (no DB touch here, so this stays edge-safe). See team-actions.ts.
+        const patch = (session as { user?: { role?: unknown; activeTeamId?: unknown } }).user;
+        if (patch) {
+          if (typeof patch.role === "string") token.role = patch.role as typeof token.role;
+          if (typeof patch.activeTeamId === "string" || patch.activeTeamId === null) {
+            token.activeTeamId = patch.activeTeamId;
+          }
+        }
       }
       return token;
     },
     session: async ({ session, token }) => {
       if (session.user) {
         session.user.id = token.id as string;
-        // Convenience only, for cheap UI decisions (e.g. showing the admin nav
-        // link) — never trusted for actual authorization. Every admin-gated
-        // action re-checks the role fresh from the database; a role change
-        // takes effect there immediately even though this claim is stale
-        // until the next login.
+        // The role the middleware gates on: the caller's role in their ACTIVE
+        // team (SERVICE_ADMIN keeps platform power in any team). Still fine for
+        // cheap UI decisions too. Server actions/pages that need the freshest
+        // per-team role read it from team-context (DB-backed).
         session.user.role = token.role as "SUPERADMIN" | "BIDDER" | "CALLER" | "MANAGER" | "SERVICE_ADMIN" | "TEAM_ADMIN";
+        session.user.activeTeamId = (token.activeTeamId ?? null) as string | null;
       }
       return session;
     },

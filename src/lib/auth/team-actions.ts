@@ -1,8 +1,8 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { getTeamContext, ACTIVE_TEAM_COOKIE } from "@/lib/auth/team-context";
+import { unstable_update } from "@/auth";
+import { getTeamContext } from "@/lib/auth/team-context";
 
 export type SwitcherData = {
   show: boolean; // hide entirely when there's nothing to switch
@@ -27,13 +27,13 @@ export async function loadTeamSwitcher(): Promise<SwitcherData> {
 export async function setActiveTeamAction(teamId: string): Promise<void> {
   const ctx = await getTeamContext();
   if (!ctx) return;
-  if (!ctx.teams.some((t) => t.id === teamId)) return; // not allowed to act in this team
+  const target = ctx.teams.find((t) => t.id === teamId);
+  if (!target) return; // not allowed to act in this team
 
-  (await cookies()).set(ACTIVE_TEAM_COOKIE, teamId, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 365,
-  });
+  // Bake the new team + gating role into the JWT (the source of truth). A
+  // service admin keeps SERVICE_ADMIN power in any team; everyone else takes
+  // the team's role, so the edge middleware gates per active team.
+  const role = ctx.isServiceAdmin ? "SERVICE_ADMIN" : target.role;
+  await unstable_update({ user: { activeTeamId: teamId, role } });
   revalidatePath("/");
 }

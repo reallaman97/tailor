@@ -1,8 +1,6 @@
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
 import { auth } from "@/auth";
-import { db } from "@/lib/db";
-import { isServiceAdmin as isServiceAdminRole } from "@/lib/auth/roles";
+import { resolveUserTeams, pickActiveTeam } from "@/lib/auth/team-resolve";
 import type { UserRole } from "@/generated/prisma/client";
 
 /**
@@ -14,8 +12,6 @@ import type { UserRole } from "@/generated/prisma/client";
  * Phase 2b-i: this is the foundation. Query scoping (teamScope) is applied
  * feature-by-feature in 2b-ii.
  */
-
-export const ACTIVE_TEAM_COOKIE = "cjp-active-team";
 
 export type TeamOption = { id: string; name: string; role: UserRole };
 
@@ -30,41 +26,19 @@ export type TeamContext = {
 
 export async function getTeamContext(): Promise<TeamContext | null> {
   const session = await auth();
-  if (!session?.user?.id) return null;
+  if (!session?.user?.id || !session.user.email) return null;
   const userId = session.user.id;
 
-  const user = await db.user.findUnique({ where: { id: userId }, select: { email: true, role: true } });
-  if (!user) return null;
-  const serviceAdmin = isServiceAdminRole(user.role);
+  const { isServiceAdmin, teams } = await resolveUserTeams(userId);
 
-  const preferred = (await cookies()).get(ACTIVE_TEAM_COOKIE)?.value ?? null;
-
-  let teams: TeamOption[];
-  if (serviceAdmin) {
-    // A platform admin can act in any active team, with team-admin power.
-    const all = await db.team.findMany({
-      where: { active: true },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    });
-    teams = all.map((t) => ({ id: t.id, name: t.name, role: "TEAM_ADMIN" as UserRole }));
-  } else {
-    const memberships = await db.teamMembership.findMany({
-      where: { userId },
-      select: { role: true, team: { select: { id: true, name: true, active: true } } },
-    });
-    teams = memberships
-      .filter((m) => m.team.active)
-      .map((m) => ({ id: m.team.id, name: m.team.name, role: m.role }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  const active = teams.find((t) => t.id === preferred) ?? teams[0] ?? null;
+  // The active team is the JWT's source of truth (set at sign-in, updated on
+  // switch via unstable_update); default to the first team if it's stale/unset.
+  const active = pickActiveTeam(teams, session.user.activeTeamId ?? null);
 
   return {
     userId,
-    email: user.email,
-    isServiceAdmin: serviceAdmin,
+    email: session.user.email,
+    isServiceAdmin,
     activeTeamId: active?.id ?? null,
     teamRole: active?.role ?? null,
     teams,

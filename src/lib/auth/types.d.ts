@@ -11,6 +11,9 @@ declare module "next-auth" {
     user: {
       id: string;
       role: Role;
+      // The team the user is currently acting in. Baked into the JWT (source of
+      // truth), updated on team switch via unstable_update. null = no team.
+      activeTeamId: string | null;
     } & DefaultSession["user"];
   }
 }
@@ -19,5 +22,6 @@ declare module "next-auth/jwt" {
   interface JWT {
     id?: string;
     role?: Role;
+    activeTeamId?: string | null;
   }
 }
