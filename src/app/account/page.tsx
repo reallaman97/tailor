@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth/require-user";
 import { db } from "@/lib/db";
+import { hasTeamAdminPower } from "@/lib/auth/roles";
 import { getAssignedProfileId } from "@/lib/profile/shared";
 import { getPersonalInfo } from "@/lib/profile/personal-info";
 import { listWorkHistory } from "@/lib/profile/work-history";
@@ -13,7 +14,7 @@ import { AccountForms } from "./account-forms";
 
 export default async function AccountPage() {
   const user = await requireUser();
-  const isSuperAdmin = user.role === "SUPERADMIN";
+  const isSuperAdmin = hasTeamAdminPower(user.role);
 
   const account = await db.user.findUniqueOrThrow({
     where: { id: user.id },

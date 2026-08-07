@@ -1,5 +1,6 @@
 import { requireUser } from "@/lib/auth/require-user";
 import { signOutAction } from "@/lib/auth/actions";
+import { hasTeamAdminPower } from "@/lib/auth/roles";
 import { TOOLS, toolStatusFor } from "@/lib/tools";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ToolCard } from "@/components/tool-card";
@@ -11,7 +12,7 @@ import Link from "next/link";
 
 export default async function Home() {
   const user = await requireUser();
-  const isSuperAdmin = user.role === "SUPERADMIN";
+  const isSuperAdmin = hasTeamAdminPower(user.role);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">

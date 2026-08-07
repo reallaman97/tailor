@@ -1,5 +1,6 @@
 import { requireResumePlatformAccess } from "@/lib/auth/require-user";
 import { listAllProfiles } from "@/lib/admin/profiles";
+import { hasTeamAdminPower } from "@/lib/auth/roles";
 import { NewResumeForm } from "./new-resume-form";
 import { AdminNewResumeForm } from "./admin-new-resume-form";
 import { AppShell } from "@/components/app-shell";
@@ -15,7 +16,7 @@ export const maxDuration = 60;
 
 export default async function NewResumePage() {
   const user = await requireResumePlatformAccess();
-  const isSuperAdmin = user.role === "SUPERADMIN";
+  const isSuperAdmin = hasTeamAdminPower(user.role);
 
   const buildableProfiles = isSuperAdmin
     ? (await listAllProfiles())

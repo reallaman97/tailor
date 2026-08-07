@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { hasTeamAdminPower } from "@/lib/auth/roles";
 
 const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/resumes", "/admin", "/account", "/interview"];
 const RESUME_PLATFORM_ROLES = new Set(["SUPERADMIN", "BIDDER"]);
@@ -25,7 +26,7 @@ export default auth((req) => {
   // /dashboard is a superadmin-only aggregate view, same gating as /admin.
   if (
     (req.nextUrl.pathname.startsWith("/admin") || req.nextUrl.pathname.startsWith("/dashboard")) &&
-    req.auth?.user?.role !== "SUPERADMIN"
+    !hasTeamAdminPower(req.auth?.user?.role)
   ) {
     return Response.redirect(new URL("/", req.nextUrl));
   }

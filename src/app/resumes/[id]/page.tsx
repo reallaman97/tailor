@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { hasTeamAdminPower } from "@/lib/auth/roles";
 import { requireResumePlatformAccess } from "@/lib/auth/require-user";
 import { getResume, type ResumeDetail } from "@/lib/resumes/resumes";
 import { getApplicationDetail, type AdminApplicationDetail } from "@/lib/admin/applications";
@@ -49,7 +50,7 @@ function daysOpen(resume: {
 export default async function ResumeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const user = await requireResumePlatformAccess();
-  const isSuperAdmin = user.role === "SUPERADMIN";
+  const isSuperAdmin = hasTeamAdminPower(user.role);
 
   // Single authoritative fetch per role, no redundant round trips:
   // - Superadmins may view any application, so read it unscoped in one query

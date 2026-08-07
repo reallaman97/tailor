@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
+import { hasTeamAdminPower } from "@/lib/auth/roles";
 import { deleteAccount } from "@/lib/profile/account";
 import { getProfileNames } from "@/lib/profile/personal-info";
 import { hashPassword } from "@/lib/auth/password";
@@ -87,7 +88,7 @@ export async function updateUserRole(
   targetUserId: string,
   role: UserRole
 ): Promise<void> {
-  if (callerId === targetUserId && role !== "SUPERADMIN") {
+  if (callerId === targetUserId && !hasTeamAdminPower(role)) {
     throw new CannotDemoteSelfError();
   }
   await db.user.update({ where: { id: targetUserId }, data: { role } });

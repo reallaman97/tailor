@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireResumePlatformAccess } from "@/lib/auth/require-user";
+import { hasTeamAdminPower } from "@/lib/auth/roles";
 import { db } from "@/lib/db";
 import { getResume } from "@/lib/resumes/resumes";
 import { getApplicationDetail } from "@/lib/admin/applications";
@@ -26,7 +27,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     // Not the owner (or no profile access) — allow a superadmin to download
     // any user's resume. Re-check the role fresh rather than trusting the JWT claim.
     const fresh = await db.user.findUniqueOrThrow({ where: { id: user.id }, select: { role: true } });
-    if (fresh.role === "SUPERADMIN") {
+    if (hasTeamAdminPower(fresh.role)) {
       const adminResume = await getApplicationDetail(id);
       if (adminResume) {
         resume = adminResume;

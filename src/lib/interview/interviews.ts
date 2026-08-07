@@ -4,6 +4,7 @@ import { unwrapDek } from "@/lib/crypto/envelope";
 import { decryptField } from "@/lib/profile/crypto";
 import { readMetaValues, type MetaValues } from "@/lib/interview/fields";
 import { getProfileNames } from "@/lib/profile/personal-info";
+import { hasTeamAdminPower } from "@/lib/auth/roles";
 import { getResumeFieldsForResume } from "@/lib/profile/resume-fields";
 import { decryptTailoredContent } from "@/lib/tailoring/tailor-resume";
 import { buildResumeDocument } from "@/lib/export/build-document";
@@ -35,7 +36,7 @@ export type InterviewAccess = { id: string; role: UserRole };
 
 /** Managers and Super Admins operate on every interview; Callers only their own. */
 export function canManageInterviews(role: UserRole): boolean {
-  return role === "SUPERADMIN" || role === "MANAGER";
+  return hasTeamAdminPower(role) || role === "MANAGER";
 }
 
 /**

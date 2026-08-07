@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireResumePlatformAccess } from "@/lib/auth/require-user";
+import { hasTeamAdminPower } from "@/lib/auth/roles";
 import { db } from "@/lib/db";
 import { getScreenshot } from "@/lib/resumes/resumes";
 import { getApplicationScreenshot } from "@/lib/admin/applications";
@@ -14,7 +15,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     // Not the owner (or no screenshot) — allow a superadmin to view it for
     // review. Re-check the role fresh rather than trusting the JWT claim.
     const fresh = await db.user.findUniqueOrThrow({ where: { id: user.id }, select: { role: true } });
-    if (fresh.role === "SUPERADMIN") {
+    if (hasTeamAdminPower(fresh.role)) {
       screenshot = await getApplicationScreenshot(id);
     }
   }

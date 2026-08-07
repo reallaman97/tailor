@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { hasTeamAdminPower } from "@/lib/auth/roles";
 import { db } from "@/lib/db";
 import { getExtUser } from "@/lib/ext/session";
 import { getAssignedProfileId } from "@/lib/profile/shared";
@@ -67,7 +68,7 @@ export async function POST(request: Request) {
   // Building as one of a profile's assigned accounts is how the web app scopes
   // this too (several accounts can share one profile).
   let ownerUserId: string;
-  if (user.role === "SUPERADMIN") {
+  if (hasTeamAdminPower(user.role)) {
     if (!body.profileId) return NextResponse.json({ error: "Select a profile to build for" }, { status: 400 });
     const owner = await db.user.findFirst({
       where: { profileId: body.profileId },

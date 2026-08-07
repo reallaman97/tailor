@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { hasTeamAdminPower } from "@/lib/auth/roles";
 import { db } from "@/lib/db";
 import { getExtUser, type ExtUser } from "@/lib/ext/session";
 import { getAssignedProfileId } from "@/lib/profile/shared";
@@ -44,7 +45,7 @@ type AuthResult =
  *   and the fallback is strictly *their own* last unproofed one.
  */
 async function resolveAuth(user: ExtUser, profileId: string | undefined): Promise<AuthResult> {
-  if (user.role === "SUPERADMIN") {
+  if (hasTeamAdminPower(user.role)) {
     if (!profileId) {
       return { ok: false, response: NextResponse.json({ error: "Select a profile first" }, { status: 400 }) };
     }

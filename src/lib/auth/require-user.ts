@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { TOOLS, canAccessTool } from "@/lib/tools";
+import { hasTeamAdminPower } from "@/lib/auth/roles";
 
 export type Role = "SUPERADMIN" | "BIDDER" | "CALLER" | "MANAGER" | "SERVICE_ADMIN" | "TEAM_ADMIN";
 
@@ -36,7 +37,7 @@ export async function requireUser(): Promise<{ id: string; email: string; role: 
 export async function requireSuperAdmin(): Promise<{ id: string; email: string }> {
   const user = await requireUser();
   const fresh = await db.user.findUniqueOrThrow({ where: { id: user.id }, select: { role: true } });
-  if (fresh.role !== "SUPERADMIN") {
+  if (!hasTeamAdminPower(fresh.role)) {
     redirect("/");
   }
   return { id: user.id, email: user.email };
@@ -89,7 +90,7 @@ export async function requireInterviewAccess(): Promise<{ id: string; email: str
  */
 export async function requireInterviewManager(): Promise<{ id: string; email: string; role: Role }> {
   const access = await requireInterviewAccess();
-  if (access.role !== "SUPERADMIN" && access.role !== "MANAGER") {
+  if (!hasTeamAdminPower(access.role) && access.role !== "MANAGER") {
     redirect("/interview");
   }
   return access;

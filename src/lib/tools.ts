@@ -7,6 +7,7 @@ import {
   DollarSignIcon,
 } from "@/components/icons";
 import type { UserRole } from "@/generated/prisma/client";
+import { hasTeamAdminPower } from "@/lib/auth/roles";
 
 export type ToolDefinition = {
   key: string;
@@ -91,7 +92,7 @@ export const TOOLS: ToolDefinition[] = [
 
 /** Superadmin can always access every tool; every other role needs to be on that tool's explicit allowlist. */
 export function canAccessTool(role: UserRole, tool: ToolDefinition): boolean {
-  return role === "SUPERADMIN" || tool.roles.includes(role);
+  return hasTeamAdminPower(role) || tool.roles.includes(role);
 }
 
 /** Every tool this role is allowed to use, in the platform's canonical order. */

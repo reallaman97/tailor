@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireSuperAdmin } from "@/lib/auth/require-user";
+import { hasTeamAdminPower } from "@/lib/auth/roles";
 import {
   updateUserAsAdmin,
   adminSetPassword,
@@ -35,7 +36,7 @@ export async function editUserAction(userId: string, _prev: EditUserState, formD
   const { email, username, role, approved } = parsed.data;
 
   // Guard self-lockout up front so no partial update happens.
-  if (userId === admin.id && role !== "SUPERADMIN") {
+  if (userId === admin.id && !hasTeamAdminPower(role)) {
     return { error: "You can't remove your own admin access." };
   }
   if (userId === admin.id && !approved) {

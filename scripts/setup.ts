@@ -69,7 +69,7 @@ async function ensureSuperadmin(): Promise<void> {
   const existing = await db.user.findUnique({ where: { email }, select: { id: true } });
   if (existing) {
     // Don't reset an existing admin's password or DEK — just guarantee access.
-    await db.user.update({ where: { email }, data: { role: "SUPERADMIN", approved: true } });
+    await db.user.update({ where: { email }, data: { role: "SERVICE_ADMIN", approved: true } });
     console.log(`✓ superadmin ensured (existing account): ${email}`);
     return;
   }
@@ -81,7 +81,7 @@ async function ensureSuperadmin(): Promise<void> {
         username,
         passwordHash: await hashPassword(password),
         encryptedDek: wrapDek(generateDek()),
-        role: "SUPERADMIN",
+        role: "SERVICE_ADMIN",
         approved: true,
       },
     });
@@ -154,7 +154,13 @@ async function ensureDefaultTenancy(): Promise<void> {
     });
   }
 
-  console.log(`✓ default tenancy ready (team ${team.id}; ${users.length} memberships ensured)`);
+  // Promote today's admins to the platform "Service Real Admin" role. Their
+  // TEAM_ADMIN membership (created above) keeps the default team administered.
+  const promoted = await db.user.updateMany({ where: { role: "SUPERADMIN" }, data: { role: "SERVICE_ADMIN" } });
+
+  console.log(
+    `✓ default tenancy ready (team ${team.id}; ${users.length} memberships ensured; ${promoted.count} SUPERADMIN→SERVICE_ADMIN)`
+  );
 }
 
 async function main(): Promise<void> {
