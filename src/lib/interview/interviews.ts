@@ -184,6 +184,28 @@ function writeData(input: InterviewWriteInput) {
 
 // ── Create ─────────────────────────────────────────────
 
+/** The team an interview belongs to — the linked application's/profile's team, else the creator's. */
+async function resolveInterviewTeamId(
+  createdById: string,
+  applicationId: string | null,
+  profileId: string | null
+): Promise<string | null> {
+  if (applicationId) {
+    const app = await db.resume.findUnique({ where: { id: applicationId }, select: { teamId: true } });
+    if (app?.teamId) return app.teamId;
+  }
+  if (profileId) {
+    const profile = await db.profile.findUnique({ where: { id: profileId }, select: { teamId: true } });
+    if (profile?.teamId) return profile.teamId;
+  }
+  const membership = await db.teamMembership.findFirst({
+    where: { userId: createdById },
+    orderBy: { createdAt: "asc" },
+    select: { teamId: true },
+  });
+  return membership?.teamId ?? null;
+}
+
 export async function createInterview(createdById: string, input: CreateInterviewInput): Promise<string> {
   const callerId = emptyToNull(input.callerId);
   if (callerId) await assertCallerValid(callerId);
@@ -203,6 +225,8 @@ export async function createInterview(createdById: string, input: CreateIntervie
     profileId = application?.profileId ?? null;
   }
 
+  const teamId = await resolveInterviewTeamId(createdById, input.applicationId ?? null, profileId);
+
   const interview = await db.interview.create({
     data: {
       ...writeData(input),
@@ -210,6 +234,7 @@ export async function createInterview(createdById: string, input: CreateIntervie
       callerId,
       applicationId: input.applicationId ?? null,
       profileId,
+      teamId,
     },
     select: { id: true },
   });
@@ -246,6 +271,8 @@ export type ListInterviewsFilter = {
   company?: string;
   from?: Date;
   to?: Date;
+  /** Scope to one team (multi-tenancy). Omitted = all teams. */
+  teamId?: string;
 };
 
 export async function listInterviews(
@@ -260,6 +287,7 @@ export async function listInterviews(
   const rows = await db.interview.findMany({
     where: {
       ...scopeWhere(access),
+      ...(filter.teamId ? { teamId: filter.teamId } : {}),
       ...(filter.callerId ? { callerId: filter.callerId } : {}),
       ...(filter.statusId ? { statusId: filter.statusId } : {}),
       ...(filter.stageId ? { stageId: filter.stageId } : {}),

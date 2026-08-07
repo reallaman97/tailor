@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireSuperAdmin } from "@/lib/auth/require-user";
+import { requireTeamAdmin } from "@/lib/auth/team-context";
 import { personalInfoSchema } from "@/lib/profile/schemas";
 import {
   createProfile,
@@ -26,11 +27,11 @@ export async function createProfileAction(
   _prevState: CreateProfileState,
   formData: FormData
 ): Promise<CreateProfileState> {
-  await requireSuperAdmin();
+  const ctx = await requireTeamAdmin();
   const parsed = personalInfoSchema.safeParse(formDataToObject(formData));
   if (!parsed.success) return { error: firstIssue(parsed.error) };
 
-  const profileId = await createProfile(parsed.data);
+  const profileId = await createProfile(parsed.data, ctx.activeTeamId ?? undefined);
   revalidatePath("/admin/profiles");
   redirect(`/admin/profiles/${profileId}`);
 }

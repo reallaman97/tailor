@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/empty-state";
 import { buttonVariants } from "@/components/ui/button";
 import { CalendarIcon, PlusIcon } from "@/components/icons";
 import { canManageInterviews, listInterviews, listCallers } from "@/lib/interview/interviews";
+import { getTeamContext } from "@/lib/auth/team-context";
 import { listActiveStatuses, listActiveStages } from "@/lib/interview/config";
 import { getInterviewTimezone } from "@/lib/settings";
 import { InterviewsView } from "./interviews-view";
@@ -13,9 +14,11 @@ import { InterviewsView } from "./interviews-view";
 export default async function InterviewListPage() {
   const access = await requireInterviewAccess();
   const isManager = canManageInterviews(access.role);
+  const ctx = await getTeamContext();
+  const teamId = ctx?.activeTeamId ?? undefined;
 
   const [interviews, timezone, statuses, stages, callers] = await Promise.all([
-    listInterviews(access),
+    listInterviews(access, { teamId }),
     getInterviewTimezone(),
     listActiveStatuses(),
     listActiveStages(),

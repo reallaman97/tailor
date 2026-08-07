@@ -28,8 +28,8 @@ export async function listAllProfiles(teamId?: string): Promise<AdminProfileSumm
   }));
 }
 
-export async function createProfile(input: PersonalInfoInput): Promise<string> {
-  return createProfileRecord(input);
+export async function createProfile(input: PersonalInfoInput, teamId?: string | null): Promise<string> {
+  return createProfileRecord(input, teamId);
 }
 
 export async function deleteProfile(profileId: string): Promise<void> {

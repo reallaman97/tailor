@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { buttonVariants } from "@/components/ui/button";
 import { PlusIcon } from "@/components/icons";
 import { canManageInterviews, listInterviews } from "@/lib/interview/interviews";
+import { getTeamContext } from "@/lib/auth/team-context";
 import { getInterviewTimezone } from "@/lib/settings";
 import { isGoogleConfigured } from "@/lib/calendar/google";
 import { loadCalendarOverlay } from "@/lib/calendar/events";
@@ -20,7 +21,9 @@ export default async function InterviewCalendarPage({
   const isManager = canManageInterviews(access.role);
   const { calendar: notice } = await searchParams;
 
-  const [interviews, timezone] = await Promise.all([listInterviews(access), getInterviewTimezone()]);
+  const ctx = await getTeamContext();
+  const teamId = ctx?.activeTeamId ?? undefined;
+  const [interviews, timezone] = await Promise.all([listInterviews(access, { teamId }), getInterviewTimezone()]);
 
   // Connection state + overlay events (refreshed on the fly when stale).
   const configured = isGoogleConfigured();

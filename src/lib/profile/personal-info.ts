@@ -112,7 +112,7 @@ export async function savePersonalInfo(profileId: string, input: PersonalInfoInp
 }
 
 /** Creates a brand-new, unassigned profile in the admin-managed pool with its own encryption key. */
-export async function createProfile(input: PersonalInfoInput): Promise<string> {
+export async function createProfile(input: PersonalInfoInput, teamId?: string | null): Promise<string> {
   const dek = generateDek();
   const encryptedDek = wrapDek(dek);
   const address = toAddressJson(input);
@@ -120,6 +120,7 @@ export async function createProfile(input: PersonalInfoInput): Promise<string> {
 
   const profile = await db.profile.create({
     data: {
+      teamId: teamId ?? null,
       encryptedDek,
       fullNameEnc: encryptField(dek, input.fullName),
       contactEmailEnc: encryptField(dek, input.contactEmail),

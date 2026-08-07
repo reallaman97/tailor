@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireSuperAdmin } from "@/lib/auth/require-user";
+import { requireTeamAdmin } from "@/lib/auth/team-context";
 import { listAllProfiles } from "@/lib/admin/profiles";
 import { deleteProfileAction } from "./actions";
 import { AccountShell } from "@/components/account-shell";
@@ -10,8 +10,8 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TrashIcon, PlusIcon } from "@/components/icons";
 
 export default async function AdminProfilesPage() {
-  await requireSuperAdmin();
-  const profiles = await listAllProfiles();
+  const ctx = await requireTeamAdmin();
+  const profiles = await listAllProfiles(ctx.activeTeamId ?? undefined);
 
   return (
     <AccountShell isSuperAdmin wide>
