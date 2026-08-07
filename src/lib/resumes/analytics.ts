@@ -88,6 +88,11 @@ function startOfWeek(date: Date): Date {
   return d;
 }
 
+/** Monday (UTC) of the week containing `now` — the earnings week boundary. */
+export function currentWeekStartUTC(now: Date = new Date()): Date {
+  return startOfWeek(now);
+}
+
 function classifyTrend(status: ResumeStatus): keyof TrendCounts | null {
   if (INTERVIEW_STATUSES.has(status)) return "scheduled";
   if (status === "REPLY" || status === "OFFER") return "positiveResponses";
@@ -268,6 +273,60 @@ export async function getDashboardAnalytics(filter: DashboardAnalyticsFilter = {
   });
 
   return { overview, byProfile, byRoleTrack, bySource, today: todayTrend, weekly };
+}
+
+// ===========================================================================
+// A single bidder's own stats + earnings (for their personal dashboard).
+// ===========================================================================
+
+export type BidderSelfStats = {
+  applicationCount: number; // every application this bidder logged
+  approvedCount: number; // approvalStatus = APPROVED
+  repliedCount: number; // reached the Reply stage
+  approvedThisWeek: number; // approved (by approvedAt) in the current week
+  rate: number; // USD per approved application
+  weeklyEarning: number; // approvedThisWeek * rate
+  totalEarning: number; // approvedCount * rate (at the current rate)
+  weekStartKey: string; // YYYY-MM-DD, Monday of the current week (UTC)
+};
+
+/**
+ * A bidder's personal numbers, scoped to their active team. Earnings are paid
+ * per APPROVED application (a team admin approves submissions), so the weekly
+ * figure counts approvals stamped this week and the all-time total values every
+ * approved application at the bidder's current rate.
+ */
+export async function getBidderSelfStats(opts: {
+  userId: string;
+  teamId?: string;
+  rate: number;
+}): Promise<BidderSelfStats> {
+  const { userId, teamId, rate } = opts;
+  const base = { userId, ...(teamId ? { teamId } : {}) };
+
+  const now = new Date();
+  const weekStart = startOfWeek(now);
+  const weekEnd = addDaysUTC(weekStart, 7);
+
+  const [applicationCount, approvedCount, repliedCount, approvedThisWeek] = await Promise.all([
+    db.resume.count({ where: base }),
+    db.resume.count({ where: { ...base, approvalStatus: "APPROVED" } }),
+    db.resume.count({ where: { ...base, statuses: { has: "REPLY" } } }),
+    db.resume.count({
+      where: { ...base, approvalStatus: "APPROVED", approvedAt: { gte: weekStart, lt: weekEnd } },
+    }),
+  ]);
+
+  return {
+    applicationCount,
+    approvedCount,
+    repliedCount,
+    approvedThisWeek,
+    rate,
+    weeklyEarning: approvedThisWeek * rate,
+    totalEarning: approvedCount * rate,
+    weekStartKey: dateOnly(weekStart),
+  };
 }
 
 // ===========================================================================

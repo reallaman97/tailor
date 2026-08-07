@@ -751,6 +751,10 @@ model TeamMembership {
   role             UserRole @default(BIDDER) // team-scoped role (TEAM_ADMIN/MANAGER/CALLER/BIDDER)
   assignedProfileId String?
 
+  // What this bidder earns per APPROVED application in this team (USD). Set by
+  // team admins/managers; drives the bidder dashboard's earnings. Default $0.80.
+  applicationRate  Float    @default(0.8)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

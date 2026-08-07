@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
-import { requireTeamAdmin } from "@/lib/auth/team-context";
+import { requireTeamContext } from "@/lib/auth/team-context";
+import { hasTeamAdminPower } from "@/lib/auth/roles";
+import { BidderDashboard } from "./bidder-view";
 import {
   getDashboardAnalytics,
   getBidderApplicationCounts,
@@ -79,7 +81,23 @@ export default async function DashboardPage({
 }: {
   searchParams: Promise<{ profile?: string; g?: string; from?: string; to?: string }>;
 }) {
-  const admin = await requireTeamAdmin();
+  // /dashboard is shared: team admins get the org-wide aggregate below; a
+  // bidder gets their personal applications-and-earnings view instead. The edge
+  // middleware keeps non-resume roles (callers/managers) out entirely.
+  const ctx = await requireTeamContext();
+  const isAdmin = ctx.isServiceAdmin || hasTeamAdminPower(ctx.teamRole);
+  if (!isAdmin) {
+    const activeTeamName = ctx.teams.find((t) => t.id === ctx.activeTeamId)?.name ?? null;
+    return (
+      <BidderDashboard
+        userId={ctx.userId}
+        email={ctx.email}
+        teamId={ctx.activeTeamId ?? undefined}
+        teamName={activeTeamName}
+      />
+    );
+  }
+  const admin = ctx;
   const teamId = admin.activeTeamId ?? undefined;
   const { profile: requestedProfileId, g, from, to } = await searchParams;
 

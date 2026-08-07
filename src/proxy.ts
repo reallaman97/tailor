@@ -1,10 +1,12 @@
 import { auth } from "@/auth";
 import { hasTeamAdminPower, isServiceAdmin } from "@/lib/auth/roles";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/resumes", "/admin", "/account", "/interview", "/platform"];
+const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/resumes", "/rates", "/admin", "/account", "/interview", "/platform"];
 // Admin roles (SERVICE_ADMIN/TEAM_ADMIN, plus legacy SUPERADMIN) can reach every tool.
 const RESUME_PLATFORM_ROLES = new Set(["SUPERADMIN", "SERVICE_ADMIN", "TEAM_ADMIN", "BIDDER"]);
 const INTERVIEW_ROLES = new Set(["SUPERADMIN", "SERVICE_ADMIN", "TEAM_ADMIN", "MANAGER", "CALLER"]);
+// Bidder-rate management: team admins plus interview Managers.
+const RATE_ROLES = new Set(["SUPERADMIN", "SERVICE_ADMIN", "TEAM_ADMIN", "MANAGER"]);
 
 // UX convenience only — redirects logged-out visitors away from protected
 // pages, non-admins away from /admin, and roles without Resume Platform
@@ -24,10 +26,27 @@ export default auth((req) => {
     return Response.redirect(new URL("/login", req.nextUrl));
   }
 
-  // /dashboard is a superadmin-only aggregate view, same gating as /admin.
+  // /admin is team-admin-only.
+  if (req.nextUrl.pathname.startsWith("/admin") && !hasTeamAdminPower(req.auth?.user?.role)) {
+    return Response.redirect(new URL("/", req.nextUrl));
+  }
+
+  // /dashboard is shared by the Resume Platform: team admins see the org-wide
+  // aggregate, bidders see their personal view. Callers/managers have no
+  // applications, so they're kept out.
   if (
-    (req.nextUrl.pathname.startsWith("/admin") || req.nextUrl.pathname.startsWith("/dashboard")) &&
-    !hasTeamAdminPower(req.auth?.user?.role)
+    req.nextUrl.pathname.startsWith("/dashboard") &&
+    req.auth?.user?.role &&
+    !RESUME_PLATFORM_ROLES.has(req.auth.user.role)
+  ) {
+    return Response.redirect(new URL("/", req.nextUrl));
+  }
+
+  // /rates: team admins and Managers set each bidder's per-application rate.
+  if (
+    req.nextUrl.pathname.startsWith("/rates") &&
+    req.auth?.user?.role &&
+    !RATE_ROLES.has(req.auth.user.role)
   ) {
     return Response.redirect(new URL("/", req.nextUrl));
   }
@@ -59,6 +78,7 @@ export const config = {
     "/dashboard/:path*",
     "/profile/:path*",
     "/resumes/:path*",
+    "/rates/:path*",
     "/admin/:path*",
     "/account/:path*",
     "/interview/:path*",
