@@ -7,7 +7,7 @@ import { currentWeekStartUTC } from "@/lib/resumes/analytics";
  * page. The bidder dashboard reads the same rate to show earnings.
  */
 
-export const DEFAULT_APPLICATION_RATE = 0.8;
+export const DEFAULT_APPLICATION_RATE = 0.08;
 const MAX_APPLICATION_RATE = 10_000; // sanity ceiling on the input
 
 export class InvalidRateError extends Error {

@@ -158,8 +158,17 @@ async function ensureDefaultTenancy(): Promise<void> {
   // TEAM_ADMIN membership (created above) keeps the default team administered.
   const promoted = await db.user.updateMany({ where: { role: "SUPERADMIN" }, data: { role: "SERVICE_ADMIN" } });
 
+  // One-time correction: the bidder application-rate column briefly shipped with
+  // a $0.80 default (a typo). The intended default is $0.08, so migrate any
+  // membership still holding the accidental value. Runs harmlessly (0 rows) once
+  // corrected; managers set deliberate rates on the Rates page thereafter.
+  const rateFix = await db.teamMembership.updateMany({
+    where: { applicationRate: 0.8 },
+    data: { applicationRate: 0.08 },
+  });
+
   console.log(
-    `✓ default tenancy ready (team ${team.id}; ${users.length} memberships ensured; ${promoted.count} SUPERADMIN→SERVICE_ADMIN)`
+    `✓ default tenancy ready (team ${team.id}; ${users.length} memberships ensured; ${promoted.count} SUPERADMIN→SERVICE_ADMIN; ${rateFix.count} rate defaults corrected)`
   );
 }
 
