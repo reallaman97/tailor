@@ -1,14 +1,13 @@
 "use client";
 
 import { SidebarShell, type ShellNavLink } from "@/components/sidebar-shell";
-import { CalendarIcon, FileTextIcon, PlusIcon, SettingsIcon, UsersIcon, DollarSignIcon } from "@/components/icons";
+import { CalendarIcon, FileTextIcon, PlusIcon, SettingsIcon, UsersIcon } from "@/components/icons";
 
 const CALENDAR: ShellNavLink = { href: "/interview", label: "Calendar", icon: CalendarIcon };
 const LIST: ShellNavLink = { href: "/interview/list", label: "Interviews", icon: FileTextIcon };
 const AVAILABILITY: ShellNavLink = { href: "/interview/availability", label: "Availability", icon: UsersIcon };
 const NEW: ShellNavLink = { href: "/interview/new", label: "New Interview", icon: PlusIcon };
 const SETTINGS: ShellNavLink = { href: "/interview/settings", label: "Settings", icon: SettingsIcon };
-const RATES: ShellNavLink = { href: "/rates", label: "Bidder Rates", icon: DollarSignIcon };
 
 /**
  * Interview Management's shell. Callers get a read/act-only view (Calendar +
@@ -26,7 +25,7 @@ export function InterviewShell({
   children: React.ReactNode;
 }) {
   const links = isManager
-    ? [CALENDAR, LIST, AVAILABILITY, NEW, SETTINGS, RATES]
+    ? [CALENDAR, LIST, AVAILABILITY, NEW, SETTINGS]
     : [CALENDAR, LIST, AVAILABILITY];
 
   return (

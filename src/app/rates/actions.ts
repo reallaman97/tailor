@@ -1,18 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireRatesManager } from "@/lib/auth/team-context";
+import { requireTeamAdmin } from "@/lib/auth/team-context";
 import { setBidderRate, InvalidRateError } from "@/lib/admin/rates";
 
 export type SetRateResult = { ok: boolean; error?: string };
 
 /**
- * Sets one bidder's per-application rate in the caller's active team. Gated to
- * team admins and Managers (requireRatesManager). Called directly from the
- * rates table's inline editor.
+ * Sets one bidder's per-application rate in the caller's active team. A Resume
+ * Platform / team-admin function. Called directly from the rates table's
+ * inline editor.
  */
 export async function setBidderRateAction(userId: string, rate: number): Promise<SetRateResult> {
-  const ctx = await requireRatesManager();
+  const ctx = await requireTeamAdmin();
   try {
     await setBidderRate(ctx.activeTeamId!, userId, rate);
   } catch (err) {

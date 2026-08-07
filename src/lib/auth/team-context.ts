@@ -1,7 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { resolveUserTeams, pickActiveTeam } from "@/lib/auth/team-resolve";
-import { hasTeamAdminPower } from "@/lib/auth/roles";
 import type { UserRole } from "@/generated/prisma/client";
 
 /**
@@ -63,18 +62,6 @@ export async function requireServiceAdmin(): Promise<TeamContext> {
 export async function requireTeamAdmin(): Promise<TeamContext> {
   const ctx = await requireTeamContext();
   if (!ctx.activeTeamId || !(ctx.isServiceAdmin || ctx.teamRole === "TEAM_ADMIN")) redirect("/");
-  return ctx;
-}
-
-/**
- * Bidder-rate management access: team-admin power OR an interview Manager in the
- * active team. Used by the /rates page/actions. `activeTeamId` is non-null on
- * return (rates always belong to a team).
- */
-export async function requireRatesManager(): Promise<TeamContext> {
-  const ctx = await requireTeamContext();
-  const role = ctx.isServiceAdmin ? "SERVICE_ADMIN" : ctx.teamRole;
-  if (!ctx.activeTeamId || !(hasTeamAdminPower(role) || role === "MANAGER")) redirect("/");
   return ctx;
 }
 

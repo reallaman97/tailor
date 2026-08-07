@@ -1,6 +1,6 @@
-import { requireRatesManager } from "@/lib/auth/team-context";
+import { requireTeamAdmin } from "@/lib/auth/team-context";
 import { listBidderRates, getTeamWeeklyEarnings } from "@/lib/admin/rates";
-import { RatesShell } from "@/components/rates-shell";
+import { AppShell } from "@/components/app-shell";
 import { RatesTable } from "./rates-table";
 import { WeeklyEarningsTable } from "./weekly-earnings-table";
 import { PageHeader } from "@/components/page-header";
@@ -9,13 +9,13 @@ import { EmptyState } from "@/components/empty-state";
 import { UsersIcon } from "@/components/icons";
 
 export default async function RatesPage() {
-  const ctx = await requireRatesManager();
+  const ctx = await requireTeamAdmin();
   const teamId = ctx.activeTeamId!;
   const [rows, weekly] = await Promise.all([listBidderRates(teamId), getTeamWeeklyEarnings(teamId)]);
   const teamName = ctx.teams.find((t) => t.id === teamId)?.name ?? null;
 
   return (
-    <RatesShell>
+    <AppShell userEmail={ctx.email} isSuperAdmin wide>
       <div className="flex flex-col gap-6">
         <PageHeader
           title="Bidder Rates"
@@ -58,6 +58,6 @@ export default async function RatesPage() {
           </>
         )}
       </div>
-    </RatesShell>
+    </AppShell>
   );
 }
