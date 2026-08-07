@@ -1,4 +1,5 @@
 import { requireInterviewManager } from "@/lib/auth/require-user";
+import { getTeamContext } from "@/lib/auth/team-context";
 import { InterviewShell } from "@/components/interview-shell";
 import { PageHeader } from "@/components/page-header";
 import { getInterviewTimezone } from "@/lib/settings";
@@ -24,12 +25,14 @@ import {
 
 export default async function InterviewSettingsPage() {
   await requireInterviewManager();
+  const ctx = await getTeamContext();
+  const teamId = ctx?.activeTeamId ?? undefined;
 
   const [timezone, stages, statuses, meetingTypes] = await Promise.all([
     getInterviewTimezone(),
-    listStages(),
-    listStatuses(),
-    listMeetingTypes(),
+    listStages(true, teamId),
+    listStatuses(true, teamId),
+    listMeetingTypes(true, teamId),
   ]);
 
   return (

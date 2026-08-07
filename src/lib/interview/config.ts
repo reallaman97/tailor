@@ -16,6 +16,25 @@ import type { StatusConfigInput } from "@/lib/interview/schemas";
  * across the codebase (see src/lib/profile/skills.ts).
  */
 
+const DEFAULT_STAGES = ["Introduce", "Technical", "Coding Test", "Culture", "Final"];
+const DEFAULT_STATUSES: [label: string, color: string][] = [
+  ["Scheduled", "#3b82f6"],
+  ["Done", "#22c55e"],
+  ["Rejected", "#ef4444"],
+  ["Failed", "#f59e0b"],
+];
+const DEFAULT_MEETING_TYPES = ["Zoom", "Google Meet", "Phone", "Onsite"];
+
+/** Seeds a new team's interview config lists (no-op if it already has stages). */
+export async function seedTeamInterviewConfig(teamId: string): Promise<void> {
+  if ((await db.interviewStage.count({ where: { teamId } })) > 0) return;
+  await db.$transaction([
+    ...DEFAULT_STAGES.map((label, i) => db.interviewStage.create({ data: { label, sortOrder: i, teamId } })),
+    ...DEFAULT_STATUSES.map(([label, color], i) => db.interviewStatus.create({ data: { label, color, sortOrder: i, teamId } })),
+    ...DEFAULT_MEETING_TYPES.map((label, i) => db.interviewMeetingType.create({ data: { label, sortOrder: i, teamId } })),
+  ]);
+}
+
 export type StageView = { id: string; label: string; sortOrder: number; active: boolean };
 export type StatusView = StageView & { color: string };
 export type MeetingTypeView = StageView;
@@ -30,19 +49,19 @@ type Direction = "up" | "down";
 
 // ── Stages ─────────────────────────────────────────────
 
-export async function listStages(includeInactive = true): Promise<StageView[]> {
+export async function listStages(includeInactive = true, teamId?: string | null): Promise<StageView[]> {
   const rows = await db.interviewStage.findMany({
-    where: includeInactive ? {} : { active: true },
+    where: { ...(teamId ? { teamId } : {}), ...(includeInactive ? {} : { active: true }) },
     orderBy: { sortOrder: "asc" },
   });
   return rows.map((r) => ({ id: r.id, label: r.label, sortOrder: r.sortOrder, active: r.active }));
 }
 
-export const listActiveStages = () => listStages(false);
+export const listActiveStages = (teamId?: string | null) => listStages(false, teamId);
 
-export async function createStage(label: string): Promise<string> {
-  const sortOrder = await db.interviewStage.count();
-  const row = await db.interviewStage.create({ data: { label: label.trim(), sortOrder } });
+export async function createStage(label: string, teamId?: string | null): Promise<string> {
+  const sortOrder = await db.interviewStage.count({ where: teamId ? { teamId } : {} });
+  const row = await db.interviewStage.create({ data: { label: label.trim(), sortOrder, teamId: teamId ?? null } });
   return row.id;
 }
 
@@ -56,8 +75,8 @@ export async function setStageActive(id: string, active: boolean): Promise<void>
   if (result.count === 0) throw new ConfigItemNotFoundError();
 }
 
-export async function moveStage(id: string, direction: Direction): Promise<void> {
-  const rows = await db.interviewStage.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, sortOrder: true } });
+export async function moveStage(id: string, direction: Direction, teamId?: string | null): Promise<void> {
+  const rows = await db.interviewStage.findMany({ where: teamId ? { teamId } : {}, orderBy: { sortOrder: "asc" }, select: { id: true, sortOrder: true } });
   const swap = neighborSwap(rows, id, direction);
   if (!swap) return;
   await db.$transaction([
@@ -68,20 +87,20 @@ export async function moveStage(id: string, direction: Direction): Promise<void>
 
 // ── Statuses (carry a color) ───────────────────────────
 
-export async function listStatuses(includeInactive = true): Promise<StatusView[]> {
+export async function listStatuses(includeInactive = true, teamId?: string | null): Promise<StatusView[]> {
   const rows = await db.interviewStatus.findMany({
-    where: includeInactive ? {} : { active: true },
+    where: { ...(teamId ? { teamId } : {}), ...(includeInactive ? {} : { active: true }) },
     orderBy: { sortOrder: "asc" },
   });
   return rows.map((r) => ({ id: r.id, label: r.label, color: r.color, sortOrder: r.sortOrder, active: r.active }));
 }
 
-export const listActiveStatuses = () => listStatuses(false);
+export const listActiveStatuses = (teamId?: string | null) => listStatuses(false, teamId);
 
-export async function createStatus(input: StatusConfigInput): Promise<string> {
-  const sortOrder = await db.interviewStatus.count();
+export async function createStatus(input: StatusConfigInput, teamId?: string | null): Promise<string> {
+  const sortOrder = await db.interviewStatus.count({ where: teamId ? { teamId } : {} });
   const row = await db.interviewStatus.create({
-    data: { label: input.label.trim(), color: input.color, sortOrder },
+    data: { label: input.label.trim(), color: input.color, sortOrder, teamId: teamId ?? null },
   });
   return row.id;
 }
@@ -99,8 +118,8 @@ export async function setStatusActive(id: string, active: boolean): Promise<void
   if (result.count === 0) throw new ConfigItemNotFoundError();
 }
 
-export async function moveStatus(id: string, direction: Direction): Promise<void> {
-  const rows = await db.interviewStatus.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, sortOrder: true } });
+export async function moveStatus(id: string, direction: Direction, teamId?: string | null): Promise<void> {
+  const rows = await db.interviewStatus.findMany({ where: teamId ? { teamId } : {}, orderBy: { sortOrder: "asc" }, select: { id: true, sortOrder: true } });
   const swap = neighborSwap(rows, id, direction);
   if (!swap) return;
   await db.$transaction([
@@ -111,19 +130,19 @@ export async function moveStatus(id: string, direction: Direction): Promise<void
 
 // ── Meeting types ──────────────────────────────────────
 
-export async function listMeetingTypes(includeInactive = true): Promise<MeetingTypeView[]> {
+export async function listMeetingTypes(includeInactive = true, teamId?: string | null): Promise<MeetingTypeView[]> {
   const rows = await db.interviewMeetingType.findMany({
-    where: includeInactive ? {} : { active: true },
+    where: { ...(teamId ? { teamId } : {}), ...(includeInactive ? {} : { active: true }) },
     orderBy: { sortOrder: "asc" },
   });
   return rows.map((r) => ({ id: r.id, label: r.label, sortOrder: r.sortOrder, active: r.active }));
 }
 
-export const listActiveMeetingTypes = () => listMeetingTypes(false);
+export const listActiveMeetingTypes = (teamId?: string | null) => listMeetingTypes(false, teamId);
 
-export async function createMeetingType(label: string): Promise<string> {
-  const sortOrder = await db.interviewMeetingType.count();
-  const row = await db.interviewMeetingType.create({ data: { label: label.trim(), sortOrder } });
+export async function createMeetingType(label: string, teamId?: string | null): Promise<string> {
+  const sortOrder = await db.interviewMeetingType.count({ where: teamId ? { teamId } : {} });
+  const row = await db.interviewMeetingType.create({ data: { label: label.trim(), sortOrder, teamId: teamId ?? null } });
   return row.id;
 }
 
@@ -137,8 +156,8 @@ export async function setMeetingTypeActive(id: string, active: boolean): Promise
   if (result.count === 0) throw new ConfigItemNotFoundError();
 }
 
-export async function moveMeetingType(id: string, direction: Direction): Promise<void> {
-  const rows = await db.interviewMeetingType.findMany({ orderBy: { sortOrder: "asc" }, select: { id: true, sortOrder: true } });
+export async function moveMeetingType(id: string, direction: Direction, teamId?: string | null): Promise<void> {
+  const rows = await db.interviewMeetingType.findMany({ where: teamId ? { teamId } : {}, orderBy: { sortOrder: "asc" }, select: { id: true, sortOrder: true } });
   const swap = neighborSwap(rows, id, direction);
   if (!swap) return;
   await db.$transaction([

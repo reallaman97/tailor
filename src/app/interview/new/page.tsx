@@ -1,4 +1,5 @@
 import { requireInterviewManager } from "@/lib/auth/require-user";
+import { getTeamContext } from "@/lib/auth/team-context";
 import { InterviewShell } from "@/components/interview-shell";
 import { PageHeader } from "@/components/page-header";
 import { getApplicationPrefill, listCallers, listAssignableProfiles } from "@/lib/interview/interviews";
@@ -13,11 +14,12 @@ export default async function NewInterviewPage({
 }) {
   await requireInterviewManager();
   const { applicationId } = await searchParams;
+  const teamId = (await getTeamContext())?.activeTeamId ?? undefined;
 
   const [stages, statuses, meetingTypes, callers, profiles, prefill] = await Promise.all([
-    listActiveStages(),
-    listActiveStatuses(),
-    listActiveMeetingTypes(),
+    listActiveStages(teamId),
+    listActiveStatuses(teamId),
+    listActiveMeetingTypes(teamId),
     listCallers(),
     listAssignableProfiles(),
     applicationId ? getApplicationPrefill(applicationId) : Promise.resolve(null),

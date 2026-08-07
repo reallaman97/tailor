@@ -20,8 +20,8 @@ export default async function InterviewListPage() {
   const [interviews, timezone, statuses, stages, callers] = await Promise.all([
     listInterviews(access, { teamId }),
     getInterviewTimezone(),
-    listActiveStatuses(),
-    listActiveStages(),
+    listActiveStatuses(teamId),
+    listActiveStages(teamId),
     isManager ? listCallers() : Promise.resolve([]),
   ]);
 

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireInterviewManager } from "@/lib/auth/require-user";
+import { getTeamContext } from "@/lib/auth/team-context";
 import { updateInterviewTimezone } from "@/lib/settings";
 import {
   createStage,
@@ -30,6 +31,10 @@ function revalidate() {
   // Labels/colors show throughout the tool.
   revalidatePath("/interview");
   revalidatePath("/interview/list");
+}
+
+async function activeTeamId(): Promise<string | undefined> {
+  return (await getTeamContext())?.activeTeamId ?? undefined;
 }
 
 async function run(fn: () => Promise<void>): Promise<Result> {
@@ -68,7 +73,7 @@ export async function createStageAction(label: string): Promise<Result> {
   const parsed = configLabelSchema.safeParse(label);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid name" };
   return run(async () => {
-    await createStage(parsed.data);
+    await createStage(parsed.data, await activeTeamId());
   });
 }
 
@@ -84,7 +89,8 @@ export async function setStageActiveAction(id: string, active: boolean): Promise
 }
 
 export async function moveStageAction(id: string, direction: Direction): Promise<Result> {
-  return run(() => moveStage(id, direction));
+  const teamId = await activeTeamId();
+  return run(() => moveStage(id, direction, teamId));
 }
 
 // ── Statuses ───────────────────────────────────────────
@@ -94,7 +100,7 @@ export async function createStatusAction(label: string, color: string): Promise<
   const parsed = statusConfigSchema.safeParse({ label, color });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid status" };
   return run(async () => {
-    await createStatus(parsed.data);
+    await createStatus(parsed.data, await activeTeamId());
   });
 }
 
@@ -110,7 +116,8 @@ export async function setStatusActiveAction(id: string, active: boolean): Promis
 }
 
 export async function moveStatusAction(id: string, direction: Direction): Promise<Result> {
-  return run(() => moveStatus(id, direction));
+  const teamId = await activeTeamId();
+  return run(() => moveStatus(id, direction, teamId));
 }
 
 // ── Meeting types ──────────────────────────────────────
@@ -120,7 +127,7 @@ export async function createMeetingTypeAction(label: string): Promise<Result> {
   const parsed = configLabelSchema.safeParse(label);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid name" };
   return run(async () => {
-    await createMeetingType(parsed.data);
+    await createMeetingType(parsed.data, await activeTeamId());
   });
 }
 
@@ -136,5 +143,6 @@ export async function setMeetingTypeActiveAction(id: string, active: boolean): P
 }
 
 export async function moveMeetingTypeAction(id: string, direction: Direction): Promise<Result> {
-  return run(() => moveMeetingType(id, direction));
+  const teamId = await activeTeamId();
+  return run(() => moveMeetingType(id, direction, teamId));
 }

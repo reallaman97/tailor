@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { seedTeamInterviewConfig } from "@/lib/interview/config";
 
 export type TeamSummary = {
   id: string;
@@ -28,6 +29,7 @@ export async function createTeam(name: string): Promise<string> {
   if (!trimmed) throw new Error("Team name is required.");
   const team = await db.team.create({ data: { name: trimmed } });
   await db.teamSettings.create({ data: { teamId: team.id } });
+  await seedTeamInterviewConfig(team.id);
   return team.id;
 }
 

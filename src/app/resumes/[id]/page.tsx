@@ -19,6 +19,7 @@ import { Alert } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { ROLE_TRACK_LABEL, getPrimaryStatus } from "@/lib/resume-status";
 import { listActiveStages, listActiveStatuses, listActiveMeetingTypes } from "@/lib/interview/config";
+import { getTeamContext } from "@/lib/auth/team-context";
 import { listCallers, listInterviewsForApplication } from "@/lib/interview/interviews";
 import { getInterviewTimezone } from "@/lib/settings";
 import { formatInterviewTime } from "@/lib/interview/timezone";
@@ -89,12 +90,13 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
   const workHistoryById = new Map((resumeFields?.workHistory ?? []).map((w) => [w.id, w]));
 
   // Superadmin-only: data for scheduling (and listing) interviews linked to this application.
+  const schedulingTeamId = isSuperAdmin ? ((await getTeamContext())?.activeTeamId ?? undefined) : undefined;
   const scheduling = isSuperAdmin
     ? await (async () => {
         const [stages, statuses, meetingTypes, callers, timezone, linkedInterviews] = await Promise.all([
-          listActiveStages(),
-          listActiveStatuses(),
-          listActiveMeetingTypes(),
+          listActiveStages(schedulingTeamId),
+          listActiveStatuses(schedulingTeamId),
+          listActiveMeetingTypes(schedulingTeamId),
           listCallers(),
           getInterviewTimezone(),
           listInterviewsForApplication(id),
