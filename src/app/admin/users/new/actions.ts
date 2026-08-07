@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireSuperAdmin } from "@/lib/auth/require-user";
+import { requireTeamAdmin } from "@/lib/auth/team-context";
 import { createUserAsAdmin, DuplicateUserError } from "@/lib/admin/users";
 import { createUserSchema } from "@/lib/admin/user-schemas";
 
@@ -19,7 +19,7 @@ function readValues(formData: FormData): CreateUserValues {
 }
 
 export async function createUserAction(_prev: CreateUserState, formData: FormData): Promise<CreateUserState> {
-  await requireSuperAdmin();
+  const ctx = await requireTeamAdmin();
 
   const parsed = createUserSchema.safeParse({
     email: formData.get("email"),
@@ -33,7 +33,7 @@ export async function createUserAction(_prev: CreateUserState, formData: FormDat
   }
 
   try {
-    await createUserAsAdmin(parsed.data);
+    await createUserAsAdmin(parsed.data, ctx.activeTeamId ?? undefined);
   } catch (err) {
     if (err instanceof DuplicateUserError) return { error: err.message, values: readValues(formData) };
     throw err;

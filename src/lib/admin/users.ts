@@ -21,8 +21,9 @@ export type AdminUserSummary = {
   approvedApplicationsCount: number;
 };
 
-export async function listAllUsers(): Promise<AdminUserSummary[]> {
+export async function listAllUsers(teamId?: string): Promise<AdminUserSummary[]> {
   const users = await db.user.findMany({
+    where: teamId ? { memberships: { some: { teamId } } } : {},
     orderBy: { createdAt: "asc" },
     select: {
       id: true,
@@ -125,7 +126,15 @@ function duplicateFieldFrom(err: unknown): "email" | "username" | null {
 }
 
 /** Superadmin creates an account directly (its own envelope DEK, chosen role/approval). */
-export async function createUserAsAdmin(input: CreateUserInput): Promise<string> {
+/** Maps the (legacy global) role chosen in the admin form to a team-scoped membership role. */
+function membershipRole(role: string): "TEAM_ADMIN" | "MANAGER" | "CALLER" | "BIDDER" {
+  if (role === "SUPERADMIN" || role === "TEAM_ADMIN" || role === "SERVICE_ADMIN") return "TEAM_ADMIN";
+  if (role === "MANAGER") return "MANAGER";
+  if (role === "CALLER") return "CALLER";
+  return "BIDDER";
+}
+
+export async function createUserAsAdmin(input: CreateUserInput, teamId?: string): Promise<string> {
   const passwordHash = await hashPassword(input.password);
   const encryptedDek = wrapDek(generateDek());
   try {
@@ -140,6 +149,10 @@ export async function createUserAsAdmin(input: CreateUserInput): Promise<string>
       },
       select: { id: true },
     });
+    // Add the new user to the creating admin's team (multi-tenancy).
+    if (teamId) {
+      await db.teamMembership.create({ data: { userId: user.id, teamId, role: membershipRole(input.role) } });
+    }
     return user.id;
   } catch (err) {
     const field = duplicateFieldFrom(err);

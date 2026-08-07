@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireSuperAdmin } from "@/lib/auth/require-user";
+import { requireTeamAdmin } from "@/lib/auth/team-context";
 import { listAllUsers } from "@/lib/admin/users";
 import { listAllProfiles } from "@/lib/admin/profiles";
 import { UsersTable } from "./users-table";
@@ -9,8 +9,9 @@ import { buttonVariants } from "@/components/ui/button";
 import { PlusIcon } from "@/components/icons";
 
 export default async function AdminUsersPage() {
-  const admin = await requireSuperAdmin();
-  const [users, profiles] = await Promise.all([listAllUsers(), listAllProfiles()]);
+  const admin = await requireTeamAdmin();
+  const teamId = admin.activeTeamId ?? undefined;
+  const [users, profiles] = await Promise.all([listAllUsers(teamId), listAllProfiles(teamId)]);
 
   return (
     <AccountShell isSuperAdmin wide>
@@ -28,7 +29,7 @@ export default async function AdminUsersPage() {
 
         <UsersTable
           users={users}
-          adminId={admin.id}
+          adminId={admin.userId}
           profiles={profiles.map((p) => ({ id: p.id, fullName: p.fullName }))}
         />
       </div>
