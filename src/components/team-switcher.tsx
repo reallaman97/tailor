@@ -3,13 +3,16 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Select } from "@/components/ui/select";
+import { UsersIcon } from "@/components/icons";
 import { loadTeamSwitcher, setActiveTeamAction, type SwitcherData } from "@/lib/auth/team-actions";
 
 /**
- * Self-contained team switcher for the top bar. Loads its data from a server
- * action on mount (so the client shells don't need server props) and hides
- * itself unless there's something to switch. Changing the team refreshes the
- * page so every server-rendered, team-scoped view updates.
+ * Self-contained team indicator for the top bar. Loads its data from a server
+ * action on mount (so the client shells don't need server props). Users who can
+ * switch teams (multi-team members and the platform admin) get a dropdown;
+ * everyone else — e.g. a bidder in a single team — gets a static team-name
+ * badge so they always see which team they're working in. Changing the team
+ * refreshes the page so every server-rendered, team-scoped view updates.
  */
 export function TeamSwitcher() {
   const router = useRouter();
@@ -22,7 +25,23 @@ export function TeamSwitcher() {
       .catch(() => {});
   }, []);
 
-  if (!data || !data.show || data.teams.length === 0) return null;
+  if (!data) return null;
+
+  // Single-team members (bidders, etc.): show the team name, not a control.
+  if (!data.canSwitch || data.teams.length <= 1) {
+    if (!data.activeTeamName) return null;
+    return (
+      <div
+        className="flex h-8 items-center gap-1.5 rounded-full border border-border bg-muted/50 pl-2 pr-2.5 text-xs font-medium text-foreground"
+        title={`Team: ${data.activeTeamName}`}
+      >
+        <span className="flex size-4 items-center justify-center rounded-full bg-primary/10 text-primary">
+          <UsersIcon className="size-2.5" />
+        </span>
+        <span className="max-w-[11rem] truncate">{data.activeTeamName}</span>
+      </div>
+    );
+  }
 
   return (
     <Select

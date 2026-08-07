@@ -5,20 +5,24 @@ import { unstable_update } from "@/auth";
 import { getTeamContext } from "@/lib/auth/team-context";
 
 export type SwitcherData = {
-  show: boolean; // hide entirely when there's nothing to switch
+  // True when the user has more than one team (or is the platform admin) and so
+  // gets a dropdown; false when they belong to a single team and instead get a
+  // static team-name badge in the header.
+  canSwitch: boolean;
   activeTeamId: string | null;
+  activeTeamName: string | null;
   teams: { id: string; name: string }[];
 };
 
 /** Data for the team switcher island (called client-side on mount). */
 export async function loadTeamSwitcher(): Promise<SwitcherData> {
   const ctx = await getTeamContext();
-  if (!ctx) return { show: false, activeTeamId: null, teams: [] };
+  if (!ctx) return { canSwitch: false, activeTeamId: null, activeTeamName: null, teams: [] };
+  const active = ctx.teams.find((t) => t.id === ctx.activeTeamId) ?? null;
   return {
-    // Worth showing if the user can switch (more than one) or is the platform
-    // admin (who manages/enters teams).
-    show: ctx.teams.length > 1 || ctx.isServiceAdmin,
+    canSwitch: ctx.teams.length > 1 || ctx.isServiceAdmin,
     activeTeamId: ctx.activeTeamId,
+    activeTeamName: active?.name ?? null,
     teams: ctx.teams.map((t) => ({ id: t.id, name: t.name })),
   };
 }
