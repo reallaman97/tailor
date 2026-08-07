@@ -193,6 +193,15 @@ export async function setUserTeamAndRole(
   ]);
 }
 
+/**
+ * Removes a user from a team (deletes the membership) without deleting the
+ * account. Used by a team admin to take someone off their team. If it was the
+ * user's only team they'll have no team until reassigned.
+ */
+export async function removeUserFromTeam(teamId: string, userId: string): Promise<void> {
+  await db.teamMembership.deleteMany({ where: { userId, teamId } });
+}
+
 export class CannotDeleteSelfError extends Error {
   constructor() {
     super("You can't delete your own account from here");
