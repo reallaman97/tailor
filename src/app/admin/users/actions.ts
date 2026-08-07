@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireSuperAdmin } from "@/lib/auth/require-user";
+import { requireTeamAdmin } from "@/lib/auth/team-context";
 import {
   updateUserRole,
   CannotDemoteSelfError,
@@ -19,7 +20,7 @@ export async function updateUserRoleAction(
   _prevState: RoleActionState,
   formData: FormData
 ): Promise<RoleActionState> {
-  const admin = await requireSuperAdmin();
+  const admin = await requireTeamAdmin();
 
   const role = formData.get("role");
   if (role !== "SUPERADMIN" && role !== "BIDDER" && role !== "CALLER" && role !== "MANAGER") {
@@ -27,7 +28,7 @@ export async function updateUserRoleAction(
   }
 
   try {
-    await updateUserRole(admin.id, targetUserId, role as UserRole);
+    await updateUserRole(admin.userId, targetUserId, role as UserRole, admin.activeTeamId ?? undefined);
   } catch (err) {
     if (err instanceof CannotDemoteSelfError) return { error: err.message };
     throw err;

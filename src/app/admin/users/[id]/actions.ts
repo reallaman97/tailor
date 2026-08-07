@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireSuperAdmin } from "@/lib/auth/require-user";
+import { requireTeamAdmin } from "@/lib/auth/team-context";
 import { hasTeamAdminPower } from "@/lib/auth/roles";
 import {
   updateUserAsAdmin,
@@ -23,7 +24,8 @@ function revalidate(userId: string) {
 }
 
 export async function editUserAction(userId: string, _prev: EditUserState, formData: FormData): Promise<EditUserState> {
-  const admin = await requireSuperAdmin();
+  const admin = await requireTeamAdmin();
+  const adminId = admin.userId;
 
   const parsed = editUserSchema.safeParse({
     email: formData.get("email"),
@@ -36,10 +38,10 @@ export async function editUserAction(userId: string, _prev: EditUserState, formD
   const { email, username, role, approved } = parsed.data;
 
   // Guard self-lockout up front so no partial update happens.
-  if (userId === admin.id && !hasTeamAdminPower(role)) {
+  if (userId === adminId && !hasTeamAdminPower(role)) {
     return { error: "You can't remove your own admin access." };
   }
-  if (userId === admin.id && !approved) {
+  if (userId === adminId && !approved) {
     return { error: "You can't revoke your own approval." };
   }
 
@@ -49,8 +51,8 @@ export async function editUserAction(userId: string, _prev: EditUserState, formD
     if (err instanceof DuplicateUserError) return { error: err.message };
     throw err;
   }
-  await updateUserRole(admin.id, userId, role);
-  await updateUserApproval(admin.id, userId, approved);
+  await updateUserRole(adminId, userId, role, admin.activeTeamId ?? undefined);
+  await updateUserApproval(adminId, userId, approved);
 
   revalidate(userId);
   return { success: true };

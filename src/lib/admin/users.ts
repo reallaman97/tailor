@@ -87,12 +87,21 @@ export class CannotDemoteSelfError extends Error {
 export async function updateUserRole(
   callerId: string,
   targetUserId: string,
-  role: UserRole
+  role: UserRole,
+  teamId?: string
 ): Promise<void> {
   if (callerId === targetUserId && !hasTeamAdminPower(role)) {
     throw new CannotDemoteSelfError();
   }
   await db.user.update({ where: { id: targetUserId }, data: { role } });
+  // Keep the team-scoped membership role in sync (multi-tenancy).
+  if (teamId) {
+    await db.teamMembership.upsert({
+      where: { userId_teamId: { userId: targetUserId, teamId } },
+      create: { userId: targetUserId, teamId, role: membershipRole(role) },
+      update: { role: membershipRole(role) },
+    });
+  }
 }
 
 export class CannotDeleteSelfError extends Error {
