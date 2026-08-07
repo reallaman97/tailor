@@ -88,16 +88,25 @@ export async function POST(request: Request) {
     ownerUserId = user.id;
   }
 
+  // The owner's team drives which OpenAI key / settings this build uses.
+  const ownerTeam = await db.teamMembership.findFirst({
+    where: { userId: ownerUserId },
+    orderBy: { createdAt: "asc" },
+    select: { teamId: true },
+  });
+  const teamId = ownerTeam?.teamId ?? null;
+
   // Derive company / title (and role track) from the description + page hints
   // when the extension didn't supply them (the one-click flow).
   let companyName = body.companyName?.trim();
   let jobTitle = body.jobTitle?.trim();
   let roleTrack: RoleTrack = "OTHER";
   if (!companyName || !jobTitle) {
-    const extracted = await extractJobPosting(body.jobDescription, {
-      pageTitle: body.pageTitle,
-      pageUrl: body.pageUrl,
-    });
+    const extracted = await extractJobPosting(
+      body.jobDescription,
+      { pageTitle: body.pageTitle, pageUrl: body.pageUrl },
+      teamId
+    );
     companyName = companyName || extracted.companyName;
     jobTitle = jobTitle || extracted.jobTitle;
     roleTrack = extracted.roleTrack;
@@ -160,14 +169,14 @@ export async function POST(request: Request) {
   // Render the tailored PDF in the profile's style.
   const resume = await db.resume.findUnique({
     where: { id: resumeId },
-    select: { profileId: true, tailoredContentEnc: true },
+    select: { profileId: true, teamId: true, tailoredContentEnc: true },
   });
   const resumeFields = await getResumeFieldsForResume(ownerUserId, resume?.profileId ?? null);
   if (!resumeFields) return NextResponse.json({ error: "Profile has no personal info saved" }, { status: 400 });
 
   const tailored = await decryptTailoredContent(resume?.profileId ?? null, resume?.tailoredContentEnc ?? null);
   const document = buildResumeDocument(resumeFields, tailored);
-  const settings = await getSettings();
+  const settings = await getSettings(resume?.teamId ?? teamId);
   const styleKey = effectiveStyleKey(
     resume?.profileId ? await getProfileTemplate(resume.profileId) : null,
     settings.resumeTemplate

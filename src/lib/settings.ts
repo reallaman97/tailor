@@ -94,7 +94,27 @@ function maskKey(key: string): string {
   return key.length <= 4 ? "••••" : `••••${key.slice(-4)}`;
 }
 
-export async function getSettings(): Promise<AppSettings> {
+/**
+ * Effective settings. With a `teamId`, reads that team's TeamSettings row
+ * (multi-tenancy — each team brings its own OpenAI key/model/prompt); falls
+ * back to the platform singleton when no team is given or its row is missing,
+ * so callers without team context behave exactly as before.
+ */
+export async function getSettings(teamId?: string | null): Promise<AppSettings> {
+  if (teamId) {
+    const ts = await db.teamSettings.findUnique({ where: { teamId } });
+    if (ts) {
+      return {
+        openaiModel: ts.openaiModel,
+        tailoringPrompt: ts.tailoringPrompt ?? DEFAULT_TAILORING_PROMPT,
+        resumeTemplate: ts.resumeTemplate,
+        hasCustomApiKey: ts.openaiApiKeyEnc !== null,
+        apiKeyHint: ts.openaiApiKeyEnc ? maskKey(decryptText(getMasterKey(), ts.openaiApiKeyEnc)) : null,
+        interviewTimezone: ts.interviewTimezone,
+      };
+    }
+  }
+
   const row = await db.appSettings.findUniqueOrThrow({ where: { id: SETTINGS_ID } });
   const apiKeyHint = row.openaiApiKeyEnc
     ? maskKey(decryptText(getMasterKey(), row.openaiApiKeyEnc))
@@ -146,12 +166,48 @@ export class NoOpenAiApiKeyError extends Error {
   }
 }
 
-/** The actual usable key for calling OpenAI — a custom Settings key takes precedence over the env var. */
-export async function getOpenAiApiKey(): Promise<string> {
+/**
+ * The usable OpenAI key. Precedence: the team's own key (each team brings its
+ * own) → the platform singleton key → the OPENAI_API_KEY env var. Throws if
+ * none is configured.
+ */
+export async function getOpenAiApiKey(teamId?: string | null): Promise<string> {
+  if (teamId) {
+    const ts = await db.teamSettings.findUnique({ where: { teamId }, select: { openaiApiKeyEnc: true } });
+    if (ts?.openaiApiKeyEnc) return decryptText(getMasterKey(), ts.openaiApiKeyEnc);
+  }
+
   const row = await db.appSettings.findUniqueOrThrow({ where: { id: SETTINGS_ID } });
   if (row.openaiApiKeyEnc) return decryptText(getMasterKey(), row.openaiApiKeyEnc);
 
   const envKey = process.env.OPENAI_API_KEY;
   if (!envKey) throw new NoOpenAiApiKeyError();
   return envKey;
+}
+
+/** Persists a team's OpenAI/resume settings. `openaiApiKey`: undefined = leave, null = clear, string = set. */
+export async function updateTeamSettings(
+  teamId: string,
+  input: { openaiModel: string; tailoringPrompt: string; resumeTemplate: ResumeTemplate; openaiApiKey?: string | null }
+): Promise<void> {
+  await db.teamSettings.upsert({
+    where: { teamId },
+    create: {
+      teamId,
+      openaiModel: input.openaiModel,
+      tailoringPrompt: input.tailoringPrompt,
+      resumeTemplate: input.resumeTemplate,
+      ...(input.openaiApiKey ? { openaiApiKeyEnc: encryptText(getMasterKey(), input.openaiApiKey) } : {}),
+    },
+    update: {
+      openaiModel: input.openaiModel,
+      tailoringPrompt: input.tailoringPrompt,
+      resumeTemplate: input.resumeTemplate,
+      ...(input.openaiApiKey === null
+        ? { openaiApiKeyEnc: null }
+        : input.openaiApiKey
+          ? { openaiApiKeyEnc: encryptText(getMasterKey(), input.openaiApiKey) }
+          : {}),
+    },
+  });
 }

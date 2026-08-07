@@ -18,9 +18,13 @@ const INSTRUCTIONS =
  * error, malformed output) silently falls back to OTHER rather than blocking
  * application creation on an LLM call.
  */
-export async function classifyRoleTrack(jobTitle: string, jobDescription: string): Promise<RoleTrack> {
+export async function classifyRoleTrack(
+  jobTitle: string,
+  jobDescription: string,
+  teamId?: string | null
+): Promise<RoleTrack> {
   try {
-    const [apiKey, settings] = await Promise.all([getOpenAiApiKey(), getSettings()]);
+    const [apiKey, settings] = await Promise.all([getOpenAiApiKey(teamId), getSettings(teamId)]);
     // Best-effort classification — don't retry a failing call, just fall back to OTHER fast.
     const client = new OpenAI({ apiKey, maxRetries: 0 });
 

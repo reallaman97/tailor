@@ -52,7 +52,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const tailoredContent = await decryptTailoredContent(resume.profileId, resume.tailoredContentEnc);
   const document = buildResumeDocument(resumeFields, tailoredContent);
-  const settings = await getSettings();
+  const teamRow = await db.resume.findUnique({ where: { id }, select: { teamId: true } });
+  const settings = await getSettings(teamRow?.teamId ?? null);
   const profileTemplate = resume.profileId ? await getProfileTemplate(resume.profileId) : null;
   const pdfBuffer = await renderResumePdf(document, effectiveStyleKey(profileTemplate, settings.resumeTemplate));
 

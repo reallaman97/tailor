@@ -80,10 +80,15 @@ export async function tailorResume(userId: string, resumeId: string): Promise<vo
   const profileId = await getAssignedProfileId(userId);
   if (!profileId) throw new ProfileIncompleteError();
 
-  const settings = await getSettings();
+  // Multi-tenancy: use the application's team's settings + OpenAI key.
+  const teamRow = await db.resume.findUnique({ where: { id: resumeId }, select: { teamId: true } });
+  const teamId = teamRow?.teamId ?? null;
+
+  const settings = await getSettings(teamId);
   const result = await generateTailoredContent(resumeFields, resume.jobDescription, {
     model: settings.openaiModel,
     systemPrompt: settings.tailoringPrompt,
+    teamId,
   });
 
   const allowedEntryIds = new Set(resumeFields.workHistory.map((w) => w.id));

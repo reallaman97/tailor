@@ -33,10 +33,11 @@ function fallbackCompany(pageUrl?: string): string {
  */
 export async function extractJobPosting(
   jobDescription: string,
-  hints?: { pageTitle?: string; pageUrl?: string }
+  hints?: { pageTitle?: string; pageUrl?: string },
+  teamId?: string | null
 ): Promise<ExtractedPosting> {
   try {
-    const [apiKey, settings] = await Promise.all([getOpenAiApiKey(), getSettings()]);
+    const [apiKey, settings] = await Promise.all([getOpenAiApiKey(teamId), getSettings(teamId)]);
     const client = new OpenAI({ apiKey, maxRetries: 0, timeout: 30_000 });
 
     const response = await client.responses.parse({

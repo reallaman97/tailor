@@ -102,8 +102,8 @@ function instructionsFor(criteria: CheckCriteria): string {
   ].join("\n");
 }
 
-async function checkBatch(apps: AppInput[], criteria: CheckCriteria): Promise<Map<string, Verdict>> {
-  const [apiKey, settings] = await Promise.all([getOpenAiApiKey(), getSettings()]);
+async function checkBatch(apps: AppInput[], criteria: CheckCriteria, teamId?: string): Promise<Map<string, Verdict>> {
+  const [apiKey, settings] = await Promise.all([getOpenAiApiKey(teamId), getSettings(teamId)]);
   const client = new OpenAI({ apiKey, maxRetries: 1, timeout: 60_000 });
 
   const input = JSON.stringify(
@@ -189,7 +189,7 @@ export async function runPendingChecks(filter: ChecksFilter): Promise<RunChecksR
 
   for (let i = 0; i < pending.length; i += BATCH_SIZE) {
     const batch = pending.slice(i, i + BATCH_SIZE);
-    const verdicts = await checkBatch(batch, criteria);
+    const verdicts = await checkBatch(batch, criteria, filter.teamId);
     apiCalls++;
 
     for (const app of batch) {

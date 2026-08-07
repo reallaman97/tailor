@@ -13,8 +13,8 @@ export const TAILORING_PROMPT_VERSION = "tailoring-v2";
 // An explicit timeout bounds a hung/slow call so it errors well before the
 // serverless function limit rather than holding the request open indefinitely
 // (the SDK default is 10 minutes).
-async function getClient(): Promise<OpenAI> {
-  const apiKey = await getOpenAiApiKey();
+async function getClient(teamId?: string | null): Promise<OpenAI> {
+  const apiKey = await getOpenAiApiKey(teamId);
   return new OpenAI({ apiKey, maxRetries: 1, timeout: 100_000 });
 }
 
@@ -58,9 +58,9 @@ export type TailoringResult = {
 export async function generateTailoredContent(
   resumeFields: ResumeFields,
   jobDescription: string,
-  options: { model: string; systemPrompt: string }
+  options: { model: string; systemPrompt: string; teamId?: string | null }
 ): Promise<TailoringResult> {
-  const client = await getClient();
+  const client = await getClient(options.teamId);
 
   let response;
   try {

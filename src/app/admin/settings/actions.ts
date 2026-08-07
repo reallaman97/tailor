@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import OpenAI, { AuthenticationError, APIError } from "openai";
-import { requireSuperAdmin } from "@/lib/auth/require-user";
-import { updateSettings, getOpenAiApiKey, NoOpenAiApiKeyError } from "@/lib/settings";
+import { requireTeamAdmin } from "@/lib/auth/team-context";
+import { updateTeamSettings, getOpenAiApiKey, NoOpenAiApiKeyError } from "@/lib/settings";
 
 const settingsSchema = z.object({
   openaiModel: z.string().trim().min(1, "Model is required"),
@@ -20,7 +20,8 @@ export async function updateSettingsAction(
   _prevState: SettingsActionState,
   formData: FormData
 ): Promise<SettingsActionState> {
-  await requireSuperAdmin();
+  const ctx = await requireTeamAdmin();
+  if (!ctx.activeTeamId) return { error: "Select a team first." };
 
   const parsed = settingsSchema.safeParse(Object.fromEntries(formData.entries()));
   if (!parsed.success) {
@@ -29,7 +30,7 @@ export async function updateSettingsAction(
 
   const { openaiModel, tailoringPrompt, resumeTemplate, openaiApiKey, clearOpenaiApiKey } = parsed.data;
 
-  await updateSettings({
+  await updateTeamSettings(ctx.activeTeamId, {
     openaiModel,
     tailoringPrompt,
     resumeTemplate,
@@ -49,14 +50,14 @@ export type TestKeyResult = { success: boolean; error?: string };
  * currently active (custom Settings key or the OPENAI_API_KEY env var).
  */
 export async function testOpenAiKeyAction(candidateKey: string): Promise<TestKeyResult> {
-  await requireSuperAdmin();
+  const ctx = await requireTeamAdmin();
 
   let key: string;
   if (candidateKey.trim() !== "") {
     key = candidateKey.trim();
   } else {
     try {
-      key = await getOpenAiApiKey();
+      key = await getOpenAiApiKey(ctx.activeTeamId);
     } catch (err) {
       if (err instanceof NoOpenAiApiKeyError) return { success: false, error: err.message };
       throw err;
