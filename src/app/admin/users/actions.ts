@@ -23,8 +23,12 @@ export async function updateUserRoleAction(
   const admin = await requireTeamAdmin();
 
   const role = formData.get("role");
-  if (role !== "SUPERADMIN" && role !== "BIDDER" && role !== "CALLER" && role !== "MANAGER") {
+  const VALID_ROLES = ["SERVICE_ADMIN", "TEAM_ADMIN", "MANAGER", "CALLER", "BIDDER", "SUPERADMIN"];
+  if (typeof role !== "string" || !VALID_ROLES.includes(role)) {
     return { error: "Invalid role" };
+  }
+  if (role === "SERVICE_ADMIN" && !admin.isServiceAdmin) {
+    return { error: "Only a Service Admin can grant the Service Admin role." };
   }
 
   try {

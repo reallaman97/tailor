@@ -17,3 +17,33 @@ export function hasTeamAdminPower(role: string | null | undefined): boolean {
 export function isServiceAdmin(role: string | null | undefined): boolean {
   return role === "SERVICE_ADMIN";
 }
+
+/**
+ * The roles an admin can assign, most-privileged first. SERVICE_ADMIN (platform
+ * owner) is only offered to a service admin; team admins choose from
+ * {@link TEAM_ROLE_OPTIONS}. The legacy SUPERADMIN is intentionally omitted —
+ * it maps to TEAM_ADMIN and is no longer assignable.
+ */
+export const SERVICE_ROLE_OPTION = { value: "SERVICE_ADMIN", label: "Service Admin" } as const;
+
+export const TEAM_ROLE_OPTIONS = [
+  { value: "TEAM_ADMIN", label: "Team Admin" },
+  { value: "MANAGER", label: "Manager" },
+  { value: "CALLER", label: "Caller" },
+  { value: "BIDDER", label: "Bidder" },
+] as const;
+
+/** Assignable roles for a given caller (service admins can also grant SERVICE_ADMIN). */
+export function assignableRoleOptions(callerIsServiceAdmin: boolean) {
+  return callerIsServiceAdmin ? [SERVICE_ROLE_OPTION, ...TEAM_ROLE_OPTIONS] : TEAM_ROLE_OPTIONS;
+}
+
+/** Every role that can appear (for labels/filters), newest model first. */
+export const ALL_ROLE_LABELS: Record<string, string> = {
+  SERVICE_ADMIN: "Service Admin",
+  TEAM_ADMIN: "Team Admin",
+  MANAGER: "Manager",
+  CALLER: "Caller",
+  BIDDER: "Bidder",
+  SUPERADMIN: "Superadmin (legacy)",
+};

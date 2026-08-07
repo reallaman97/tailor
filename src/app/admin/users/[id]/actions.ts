@@ -7,9 +7,9 @@ import { requireTeamAdmin } from "@/lib/auth/team-context";
 import { hasTeamAdminPower } from "@/lib/auth/roles";
 import {
   updateUserAsAdmin,
-  adminSetPassword,
-  updateUserRole,
+  setUserTeamAndRole,
   updateUserApproval,
+  adminSetPassword,
   deleteUserAsAdmin,
   DuplicateUserError,
 } from "@/lib/admin/users";
@@ -31,11 +31,27 @@ export async function editUserAction(userId: string, _prev: EditUserState, formD
     email: formData.get("email"),
     username: formData.get("username"),
     role: formData.get("role"),
+    teamId: formData.get("teamId") || undefined,
     approved: formData.get("approved") === "true",
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
-  const { email, username, role, approved } = parsed.data;
+  const { email, username, role, teamId, approved } = parsed.data;
+
+  // Only a service admin may grant the platform SERVICE_ADMIN role or move a
+  // user to an arbitrary team; a team admin acts within their own active team.
+  if (role === "SERVICE_ADMIN" && !admin.isServiceAdmin) {
+    return { error: "Only a Service Admin can grant the Service Admin role." };
+  }
+  const targetTeamId =
+    admin.isServiceAdmin && teamId
+      ? admin.teams.some((t) => t.id === teamId)
+        ? teamId
+        : null
+      : admin.activeTeamId;
+  if (!targetTeamId) {
+    return { error: "Select a team for this user." };
+  }
 
   // Guard self-lockout up front so no partial update happens.
   if (userId === adminId && !hasTeamAdminPower(role)) {
@@ -51,7 +67,7 @@ export async function editUserAction(userId: string, _prev: EditUserState, formD
     if (err instanceof DuplicateUserError) return { error: err.message };
     throw err;
   }
-  await updateUserRole(adminId, userId, role, admin.activeTeamId ?? undefined);
+  await setUserTeamAndRole(adminId, userId, targetTeamId, role);
   await updateUserApproval(adminId, userId, approved);
 
   revalidate(userId);

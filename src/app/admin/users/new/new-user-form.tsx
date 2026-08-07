@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Alert } from "@/components/ui/alert";
 import { FormField } from "@/components/ui/form-field";
+import { TEAM_ROLE_OPTIONS } from "@/lib/auth/roles";
 
 export function NewUserForm() {
   const [state, formAction, pending] = useActionState(createUserAction, undefined);
@@ -30,10 +31,11 @@ export function NewUserForm() {
 
       <FormField label="Role" htmlFor="role">
         <Select id="role" name="role" defaultValue={v?.role ?? "BIDDER"}>
-          <option value="BIDDER">Bidder</option>
-          <option value="CALLER">Caller</option>
-          <option value="MANAGER">Manager</option>
-          <option value="SUPERADMIN">Superadmin</option>
+          {TEAM_ROLE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </Select>
       </FormField>
 

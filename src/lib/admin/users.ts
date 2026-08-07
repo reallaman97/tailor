@@ -104,6 +104,35 @@ export async function updateUserRole(
   }
 }
 
+/**
+ * Assigns a user to a team with a role, moving them so they belong to exactly
+ * that team afterwards (memberships in other teams are removed). Used by the
+ * admin edit page where a service admin picks the user's team + role. Keeps the
+ * global User.role in sync (SERVICE_ADMIN maps to a TEAM_ADMIN membership).
+ */
+export async function setUserTeamAndRole(
+  callerId: string,
+  targetUserId: string,
+  teamId: string,
+  role: UserRole
+): Promise<void> {
+  if (callerId === targetUserId && !hasTeamAdminPower(role)) {
+    throw new CannotDemoteSelfError();
+  }
+  const memberRole = membershipRole(role);
+  await db.$transaction([
+    db.user.update({ where: { id: targetUserId }, data: { role } }),
+    // Move semantics: drop memberships in any other team...
+    db.teamMembership.deleteMany({ where: { userId: targetUserId, teamId: { not: teamId } } }),
+    // ...and set (create or update) the membership in the chosen team.
+    db.teamMembership.upsert({
+      where: { userId_teamId: { userId: targetUserId, teamId } },
+      create: { userId: targetUserId, teamId, role: memberRole },
+      update: { role: memberRole },
+    }),
+  ]);
+}
+
 export class CannotDeleteSelfError extends Error {
   constructor() {
     super("You can't delete your own account from here");
@@ -178,14 +207,31 @@ export type AdminUserDetail = {
   approved: boolean;
   createdAt: Date;
   assignedProfileId: string | null;
+  /** The team the user currently belongs to (their first membership), if any. */
+  teamId: string | null;
+  teamRole: UserRole | null;
 };
 
 export async function getUserForAdmin(id: string): Promise<AdminUserDetail | null> {
   const user = await db.user.findUnique({
     where: { id },
-    select: { id: true, email: true, username: true, role: true, approved: true, createdAt: true, profileId: true },
+    select: {
+      id: true,
+      email: true,
+      username: true,
+      role: true,
+      approved: true,
+      createdAt: true,
+      profileId: true,
+      memberships: {
+        select: { teamId: true, role: true },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+      },
+    },
   });
   if (!user) return null;
+  const primary = user.memberships[0] ?? null;
   return {
     id: user.id,
     email: user.email,
@@ -194,6 +240,8 @@ export async function getUserForAdmin(id: string): Promise<AdminUserDetail | nul
     approved: user.approved,
     createdAt: user.createdAt,
     assignedProfileId: user.profileId,
+    teamId: primary?.teamId ?? null,
+    teamRole: primary?.role ?? null,
   };
 }
 

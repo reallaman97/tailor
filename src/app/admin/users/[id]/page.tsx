@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireSuperAdmin } from "@/lib/auth/require-user";
+import { requireTeamAdmin } from "@/lib/auth/team-context";
 import { getUserForAdmin } from "@/lib/admin/users";
 import { listAllProfiles } from "@/lib/admin/profiles";
 import { AccountShell } from "@/components/account-shell";
@@ -14,12 +14,13 @@ import { deleteUserFromEditAction } from "./actions";
 
 export default async function EditUserPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const admin = await requireSuperAdmin();
+  const admin = await requireTeamAdmin();
 
-  const [user, profiles] = await Promise.all([getUserForAdmin(id), listAllProfiles()]);
+  const [user, profiles] = await Promise.all([getUserForAdmin(id), listAllProfiles(admin.activeTeamId ?? undefined)]);
   if (!user) notFound();
 
-  const isSelf = user.id === admin.id;
+  const isSelf = user.id === admin.userId;
+  const teams = admin.teams.map((t) => ({ id: t.id, name: t.name }));
 
   return (
     <AccountShell isSuperAdmin>
@@ -37,10 +38,10 @@ export default async function EditUserPage({ params }: { params: Promise<{ id: s
         <Card>
           <CardHeader>
             <CardTitle>Account</CardTitle>
-            <CardDescription>Identity, role, and approval.</CardDescription>
+            <CardDescription>Identity, team, role, and approval.</CardDescription>
           </CardHeader>
           <CardContent>
-            <EditUserForm user={user} isSelf={isSelf} />
+            <EditUserForm user={user} isSelf={isSelf} isServiceAdmin={admin.isServiceAdmin} teams={teams} />
           </CardContent>
         </Card>
 

@@ -7,11 +7,26 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Alert } from "@/components/ui/alert";
 import { FormField } from "@/components/ui/form-field";
+import { assignableRoleOptions } from "@/lib/auth/roles";
 import type { AdminUserDetail } from "@/lib/admin/users";
 
-export function EditUserForm({ user, isSelf }: { user: AdminUserDetail; isSelf: boolean }) {
+export function EditUserForm({
+  user,
+  isSelf,
+  isServiceAdmin,
+  teams,
+}: {
+  user: AdminUserDetail;
+  isSelf: boolean;
+  isServiceAdmin: boolean;
+  teams: { id: string; name: string }[];
+}) {
   const action = editUserAction.bind(null, user.id);
   const [state, formAction, pending] = useActionState(action, undefined);
+
+  const roleOptions = assignableRoleOptions(isServiceAdmin);
+  // Legacy SUPERADMIN accounts map to Team Admin in the new model.
+  const defaultRole = user.role === "SUPERADMIN" ? "TEAM_ADMIN" : user.role;
 
   return (
     <form action={formAction} className="flex max-w-lg flex-col gap-5">
@@ -26,12 +41,25 @@ export function EditUserForm({ user, isSelf }: { user: AdminUserDetail; isSelf: 
         <Input id="username" name="username" defaultValue={user.username} required autoComplete="off" />
       </FormField>
 
+      {isServiceAdmin && (
+        <FormField label="Team" htmlFor="teamId" hint="Which team this user belongs to.">
+          <Select id="teamId" name="teamId" defaultValue={user.teamId ?? teams[0]?.id ?? ""}>
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+      )}
+
       <FormField label="Role" htmlFor="role" hint={isSelf ? "You can't remove your own admin access." : undefined}>
-        <Select id="role" name="role" defaultValue={user.role}>
-          <option value="BIDDER">Bidder</option>
-          <option value="CALLER">Caller</option>
-          <option value="MANAGER">Manager</option>
-          <option value="SUPERADMIN">Superadmin</option>
+        <Select id="role" name="role" defaultValue={defaultRole}>
+          {roleOptions.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
         </Select>
       </FormField>
 

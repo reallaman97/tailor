@@ -251,10 +251,11 @@ export function UsersTable({
         value={(table.getColumn("role")?.getFilterValue() as string) ?? ""}
         onChange={(v) => table.getColumn("role")?.setFilterValue(v || undefined)}
         options={[
-          { value: "BIDDER", label: "Bidder" },
-          { value: "CALLER", label: "Caller" },
+          { value: "SERVICE_ADMIN", label: "Service Admin" },
+          { value: "TEAM_ADMIN", label: "Team Admin" },
           { value: "MANAGER", label: "Manager" },
-          { value: "SUPERADMIN", label: "Superadmin" },
+          { value: "CALLER", label: "Caller" },
+          { value: "BIDDER", label: "Bidder" },
         ]}
       />
     ),
