@@ -61,6 +61,66 @@ export async function listAllUsers(teamId?: string): Promise<AdminUserSummary[]>
   }));
 }
 
+export type PlatformUserRow = {
+  id: string;
+  email: string;
+  username: string;
+  role: UserRole; // global role
+  approved: boolean;
+  createdAt: Date;
+  teamId: string | null; // primary team
+  teamName: string | null;
+  teamRole: UserRole | null;
+  approvedApplicationsCount: number;
+};
+
+/**
+ * Every user on the platform (across all teams) with their primary team, role,
+ * approval, and approved-application count. Powers the Service Admin's all-in-one
+ * user console at /platform/users.
+ */
+export async function listPlatformUsers(): Promise<PlatformUserRow[]> {
+  const users = await db.user.findMany({
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      email: true,
+      username: true,
+      role: true,
+      approved: true,
+      createdAt: true,
+      memberships: {
+        select: { teamId: true, role: true, team: { select: { name: true } } },
+        orderBy: { createdAt: "asc" },
+        take: 1,
+      },
+    },
+  });
+
+  const approvedCounts = await db.resume.groupBy({
+    by: ["userId"],
+    where: { approvalStatus: "APPROVED" },
+    _count: { _all: true },
+  });
+  const countByUser = new Map(approvedCounts.map((c) => [c.userId, c._count._all]));
+
+  return users.map((u) => {
+    const m = u.memberships[0] ?? null;
+    return {
+      id: u.id,
+      email: u.email,
+      username: u.username,
+      role: u.role,
+      approved: u.approved,
+      createdAt: u.createdAt,
+      teamId: m?.teamId ?? null,
+      teamName: m?.team.name ?? null,
+      teamRole: m?.role ?? null,
+      approvedApplicationsCount: countByUser.get(u.id) ?? 0,
+    };
+  });
+}
+
 export class CannotUnapproveSelfError extends Error {
   constructor() {
     super("You can't revoke your own approval");
