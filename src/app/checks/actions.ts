@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireSuperAdmin } from "@/lib/auth/require-user";
 import { requireTeamAdmin } from "@/lib/auth/team-context";
 import { runPendingChecks, updateCheckCriteria } from "@/lib/checks/application-checks";
 import type { WorkStyle } from "@/lib/checks/application-checks";
@@ -46,7 +45,7 @@ const WORK_STYLES = ["REMOTE", "HYBRID", "ONSITE", "ANY"];
 
 /** Saves the checking criteria. Changing them marks existing verdicts stale (re-run to apply). */
 export async function saveCriteriaAction(_prev: CriteriaState, formData: FormData): Promise<CriteriaState> {
-  await requireSuperAdmin();
+  const ctx = await requireTeamAdmin();
 
   const country = String(formData.get("country") ?? "").trim();
   const rawStyle = String(formData.get("workStyle") ?? "REMOTE");
@@ -56,7 +55,7 @@ export async function saveCriteriaAction(_prev: CriteriaState, formData: FormDat
   if (!jobCategory) return { error: "Job category can't be empty." };
 
   try {
-    await updateCheckCriteria({ country: country || "ANY", workStyle, jobCategory });
+    await updateCheckCriteria({ country: country || "ANY", workStyle, jobCategory }, ctx.activeTeamId);
     revalidatePath("/checks");
     return { ok: "Criteria saved. Re-run checks to apply them." };
   } catch (err) {

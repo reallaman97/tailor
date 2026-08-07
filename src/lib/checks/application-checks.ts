@@ -35,7 +35,16 @@ function normalizeWorkStyle(value: string): WorkStyle {
   return value === "HYBRID" || value === "ONSITE" || value === "ANY" ? value : "REMOTE";
 }
 
-export async function getCheckCriteria(): Promise<CheckCriteria> {
+export async function getCheckCriteria(teamId?: string | null): Promise<CheckCriteria> {
+  if (teamId) {
+    const ts = await db.teamSettings.findUnique({
+      where: { teamId },
+      select: { checkCountry: true, checkWorkStyle: true, checkJobCategory: true },
+    });
+    if (ts) {
+      return { country: ts.checkCountry, workStyle: normalizeWorkStyle(ts.checkWorkStyle), jobCategory: ts.checkJobCategory };
+    }
+  }
   const row = await db.appSettings.findUniqueOrThrow({
     where: { id: SETTINGS_ID },
     select: { checkCountry: true, checkWorkStyle: true, checkJobCategory: true },
@@ -47,15 +56,17 @@ export async function getCheckCriteria(): Promise<CheckCriteria> {
   };
 }
 
-export async function updateCheckCriteria(input: CheckCriteria): Promise<void> {
-  await db.appSettings.update({
-    where: { id: SETTINGS_ID },
-    data: {
-      checkCountry: input.country.trim() || "ANY",
-      checkWorkStyle: input.workStyle,
-      checkJobCategory: input.jobCategory.trim(),
-    },
-  });
+export async function updateCheckCriteria(input: CheckCriteria, teamId?: string | null): Promise<void> {
+  const data = {
+    checkCountry: input.country.trim() || "ANY",
+    checkWorkStyle: input.workStyle,
+    checkJobCategory: input.jobCategory.trim(),
+  };
+  if (teamId) {
+    await db.teamSettings.update({ where: { teamId }, data });
+    return;
+  }
+  await db.appSettings.update({ where: { id: SETTINGS_ID }, data });
 }
 
 /** Short stable fingerprint of the criteria — changing any criterion marks existing verdicts stale. */
@@ -166,7 +177,7 @@ export type RunChecksResult = {
  * many still need checking.
  */
 export async function runPendingChecks(filter: ChecksFilter): Promise<RunChecksResult> {
-  const criteria = await getCheckCriteria();
+  const criteria = await getCheckCriteria(filter.teamId);
   const hash = criteriaHash(criteria);
 
   const pendingWhere: Prisma.ResumeWhereInput = {
@@ -265,7 +276,7 @@ function dayKey(date: Date): string {
 }
 
 export async function listApplicationChecks(filter: ChecksFilter): Promise<ChecksResult> {
-  const criteria = await getCheckCriteria();
+  const criteria = await getCheckCriteria(filter.teamId);
   const hash = criteriaHash(criteria);
 
   const rows = await db.resume.findMany({

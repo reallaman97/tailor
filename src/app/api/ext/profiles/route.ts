@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
 import { getExtUser } from "@/lib/ext/session";
 import { hasTeamAdminPower } from "@/lib/auth/roles";
 import { getAssignedProfileId } from "@/lib/profile/shared";
@@ -11,7 +12,13 @@ export async function GET(request: Request) {
   if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   if (hasTeamAdminPower(user.role)) {
-    const profiles = await listAllProfiles();
+    // Scope an admin's profile picker to their team (multi-tenancy).
+    const membership = await db.teamMembership.findFirst({
+      where: { userId: user.id },
+      orderBy: { createdAt: "asc" },
+      select: { teamId: true },
+    });
+    const profiles = await listAllProfiles(membership?.teamId ?? undefined);
     return NextResponse.json({
       profiles: profiles.map((p) => ({ id: p.id, name: p.fullName ?? "Untitled profile" })),
     });
