@@ -2,8 +2,9 @@ import { auth } from "@/auth";
 import { hasTeamAdminPower, isServiceAdmin } from "@/lib/auth/roles";
 
 const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/resumes", "/admin", "/account", "/interview", "/platform"];
-const RESUME_PLATFORM_ROLES = new Set(["SUPERADMIN", "BIDDER"]);
-const INTERVIEW_ROLES = new Set(["SUPERADMIN", "MANAGER", "CALLER"]);
+// Admin roles (SERVICE_ADMIN/TEAM_ADMIN, plus legacy SUPERADMIN) can reach every tool.
+const RESUME_PLATFORM_ROLES = new Set(["SUPERADMIN", "SERVICE_ADMIN", "TEAM_ADMIN", "BIDDER"]);
+const INTERVIEW_ROLES = new Set(["SUPERADMIN", "SERVICE_ADMIN", "TEAM_ADMIN", "MANAGER", "CALLER"]);
 
 // UX convenience only — redirects logged-out visitors away from protected
 // pages, non-admins away from /admin, and roles without Resume Platform
