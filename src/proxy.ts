@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
-import { hasTeamAdminPower } from "@/lib/auth/roles";
+import { hasTeamAdminPower, isServiceAdmin } from "@/lib/auth/roles";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/resumes", "/admin", "/account", "/interview"];
+const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/resumes", "/admin", "/account", "/interview", "/platform"];
 const RESUME_PLATFORM_ROLES = new Set(["SUPERADMIN", "BIDDER"]);
 const INTERVIEW_ROLES = new Set(["SUPERADMIN", "MANAGER", "CALLER"]);
 
@@ -31,6 +31,11 @@ export default auth((req) => {
     return Response.redirect(new URL("/", req.nextUrl));
   }
 
+  // /platform is the platform owner (Service Real Admin) area.
+  if (req.nextUrl.pathname.startsWith("/platform") && !isServiceAdmin(req.auth?.user?.role)) {
+    return Response.redirect(new URL("/", req.nextUrl));
+  }
+
   if (
     (req.nextUrl.pathname.startsWith("/resumes") || req.nextUrl.pathname.startsWith("/profile")) &&
     req.auth?.user?.role &&
@@ -49,5 +54,13 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/profile/:path*", "/resumes/:path*", "/admin/:path*", "/account/:path*", "/interview/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/profile/:path*",
+    "/resumes/:path*",
+    "/admin/:path*",
+    "/account/:path*",
+    "/interview/:path*",
+    "/platform/:path*",
+  ],
 };

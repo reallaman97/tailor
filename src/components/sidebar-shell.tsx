@@ -6,6 +6,7 @@ import { signOutAction } from "@/lib/auth/actions";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Logo } from "@/components/logo";
+import { TeamSwitcher } from "@/components/team-switcher";
 import { Footer } from "@/components/footer";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { cn } from "@/lib/utils";
@@ -69,7 +70,8 @@ export function SidebarShell({
           <Logo className="size-6 rounded-md" />
           <span className="text-sm font-semibold tracking-tight text-foreground">Cute Job Platform</span>
         </Link>
-        <div className="flex items-center gap-1 justify-self-end">
+        <div className="flex items-center gap-1.5 justify-self-end">
+          <TeamSwitcher />
           <Link
             href="/account"
             aria-label="My account"

@@ -1,6 +1,6 @@
 import { requireUser } from "@/lib/auth/require-user";
 import { signOutAction } from "@/lib/auth/actions";
-import { hasTeamAdminPower } from "@/lib/auth/roles";
+import { hasTeamAdminPower, isServiceAdmin } from "@/lib/auth/roles";
 import { TOOLS, toolStatusFor } from "@/lib/tools";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ToolCard } from "@/components/tool-card";
@@ -13,6 +13,7 @@ import Link from "next/link";
 export default async function Home() {
   const user = await requireUser();
   const isSuperAdmin = hasTeamAdminPower(user.role);
+  const serviceAdmin = isServiceAdmin(user.role);
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
@@ -45,11 +46,21 @@ export default async function Home() {
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-12 sm:px-8">
-        <div className="mb-10 flex flex-col gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Cute Job Platform</h1>
-          <p className="text-sm text-muted-foreground">
-            Your toolkit for the job hunt — pick a tool to get started.
-          </p>
+        <div className="mb-10 flex flex-wrap items-end justify-between gap-4">
+          <div className="flex flex-col gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Cute Job Platform</h1>
+            <p className="text-sm text-muted-foreground">
+              Your toolkit for the job hunt — pick a tool to get started.
+            </p>
+          </div>
+          {serviceAdmin && (
+            <Link
+              href="/platform/teams"
+              className="rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+            >
+              Platform Admin →
+            </Link>
+          )}
         </div>
 
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
