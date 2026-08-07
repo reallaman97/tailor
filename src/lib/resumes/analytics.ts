@@ -283,8 +283,10 @@ export type BidderSelfStats = {
   applicationCount: number; // every application this bidder logged
   approvedCount: number; // approvalStatus = APPROVED
   repliedCount: number; // reached the Reply stage
+  approvedToday: number; // approved (by approvedAt) today (UTC)
   approvedThisWeek: number; // approved (by approvedAt) in the current week
   rate: number; // USD per approved application
+  todayEarning: number; // approvedToday * rate
   weeklyEarning: number; // approvedThisWeek * rate
   totalEarning: number; // approvedCount * rate (at the current rate)
   weekStartKey: string; // YYYY-MM-DD, Monday of the current week (UTC)
@@ -305,13 +307,18 @@ export async function getBidderSelfStats(opts: {
   const base = { userId, ...(teamId ? { teamId } : {}) };
 
   const now = new Date();
+  const dayStart = startOfDayUTC(now);
+  const dayEnd = addDaysUTC(dayStart, 1);
   const weekStart = startOfWeek(now);
   const weekEnd = addDaysUTC(weekStart, 7);
 
-  const [applicationCount, approvedCount, repliedCount, approvedThisWeek] = await Promise.all([
+  const [applicationCount, approvedCount, repliedCount, approvedToday, approvedThisWeek] = await Promise.all([
     db.resume.count({ where: base }),
     db.resume.count({ where: { ...base, approvalStatus: "APPROVED" } }),
     db.resume.count({ where: { ...base, statuses: { has: "REPLY" } } }),
+    db.resume.count({
+      where: { ...base, approvalStatus: "APPROVED", approvedAt: { gte: dayStart, lt: dayEnd } },
+    }),
     db.resume.count({
       where: { ...base, approvalStatus: "APPROVED", approvedAt: { gte: weekStart, lt: weekEnd } },
     }),
@@ -321,11 +328,128 @@ export async function getBidderSelfStats(opts: {
     applicationCount,
     approvedCount,
     repliedCount,
+    approvedToday,
     approvedThisWeek,
     rate,
+    todayEarning: approvedToday * rate,
     weeklyEarning: approvedThisWeek * rate,
     totalEarning: approvedCount * rate,
     weekStartKey: dateOnly(weekStart),
+  };
+}
+
+// ===========================================================================
+// One bidder's own application counts over a period (their personal dashboard):
+// daily buckets for this week / this month, monthly buckets for this year.
+// ===========================================================================
+
+export type BidderCountPeriod = "week" | "month" | "year";
+
+export type BidderSelfCountsBucket = { key: string; label: string; count: number };
+
+export type BidderSelfCounts = {
+  period: BidderCountPeriod;
+  unitNoun: "day" | "month"; // what each bucket represents
+  buckets: BidderSelfCountsBucket[]; // chronological, includes empty buckets
+  total: number;
+  rangeLabel: string; // human label for the covered range
+  busiestLabel: string | null; // bucket with the most applications
+  busiestCount: number;
+  perUnitAverage: number; // total / number of buckets
+};
+
+const WEEKDAY_ABBR = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+export function normalizeBidderPeriod(value: string | undefined): BidderCountPeriod {
+  return value === "month" || value === "year" ? value : "week";
+}
+
+/**
+ * A single bidder's application counts (by `createdAt`) bucketed for their
+ * dashboard: this week and this month resolve to daily buckets; this year to
+ * twelve monthly buckets. Empty buckets are included so the chart/table are
+ * continuous.
+ */
+export async function getBidderSelfCounts(opts: {
+  userId: string;
+  teamId?: string;
+  period: BidderCountPeriod;
+}): Promise<BidderSelfCounts> {
+  const { userId, teamId, period } = opts;
+  const now = new Date();
+
+  // Build the bucket scaffold + range for the chosen period.
+  let rangeStart: Date;
+  let rangeEnd: Date; // exclusive
+  let unitNoun: "day" | "month";
+  const buckets: BidderSelfCountsBucket[] = [];
+
+  if (period === "year") {
+    unitNoun = "month";
+    rangeStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+    rangeEnd = new Date(Date.UTC(now.getUTCFullYear() + 1, 0, 1));
+    for (let m = new Date(rangeStart); m < rangeEnd; m = addMonthsUTC(m, 1)) {
+      buckets.push({ key: dateOnly(m), label: MONTH_ABBR[m.getUTCMonth()], count: 0 });
+    }
+  } else {
+    unitNoun = "day";
+    if (period === "month") {
+      rangeStart = startOfMonthUTC(now);
+      rangeEnd = addMonthsUTC(rangeStart, 1);
+      for (let d = new Date(rangeStart); d < rangeEnd; d = addDaysUTC(d, 1)) {
+        buckets.push({ key: dateOnly(d), label: String(d.getUTCDate()), count: 0 });
+      }
+    } else {
+      // week: current week, Monday..Sunday
+      rangeStart = startOfWeek(now);
+      rangeEnd = addDaysUTC(rangeStart, 7);
+      for (let i = 0; i < 7; i++) {
+        const d = addDaysUTC(rangeStart, i);
+        buckets.push({ key: dateOnly(d), label: WEEKDAY_ABBR[i], count: 0 });
+      }
+    }
+  }
+
+  const indexByKey = new Map(buckets.map((b, i) => [b.key, i]));
+
+  const rows = await db.resume.findMany({
+    where: {
+      userId,
+      ...(teamId ? { teamId } : {}),
+      createdAt: { gte: rangeStart, lt: rangeEnd },
+    },
+    select: { createdAt: true },
+  });
+
+  for (const r of rows) {
+    const bucketStart = unitNoun === "month" ? startOfMonthUTC(r.createdAt) : startOfDayUTC(r.createdAt);
+    const idx = indexByKey.get(dateOnly(bucketStart));
+    if (idx !== undefined) buckets[idx].count++;
+  }
+
+  const total = rows.length;
+  let busiestIdx = -1;
+  for (let i = 0; i < buckets.length; i++) {
+    if (busiestIdx < 0 || buckets[i].count > buckets[busiestIdx].count) busiestIdx = i;
+  }
+  const hasBusiest = busiestIdx >= 0 && buckets[busiestIdx].count > 0;
+
+  const rangeLabel =
+    period === "year"
+      ? String(now.getUTCFullYear())
+      : period === "month"
+        ? `${MONTH_ABBR[now.getUTCMonth()]} ${now.getUTCFullYear()}`
+        : `${dateOnly(rangeStart)} – ${dateOnly(addDaysUTC(rangeEnd, -1))}`;
+
+  return {
+    period,
+    unitNoun,
+    buckets,
+    total,
+    rangeLabel,
+    busiestLabel: hasBusiest ? buckets[busiestIdx].label : null,
+    busiestCount: hasBusiest ? buckets[busiestIdx].count : 0,
+    perUnitAverage: buckets.length > 0 ? total / buckets.length : 0,
   };
 }
 

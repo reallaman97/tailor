@@ -1,10 +1,13 @@
 import type { ReactNode } from "react";
 import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/page-header";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { LineChart } from "@/components/line-chart";
 import { FileTextIcon, CheckCircleIcon, TargetIcon, DollarSignIcon } from "@/components/icons";
 import { getApplicationRate } from "@/lib/admin/rates";
-import { getBidderSelfStats } from "@/lib/resumes/analytics";
+import { getBidderSelfStats, getBidderSelfCounts, normalizeBidderPeriod } from "@/lib/resumes/analytics";
+import { BidderPeriodToggle } from "./bidder-period-toggle";
 
 function usd(n: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
@@ -41,24 +44,32 @@ function StatCard({
   );
 }
 
+const PERIOD_NOUN: Record<string, string> = { week: "this week", month: "this month", year: "this year" };
+
 /**
- * A bidder's personal dashboard: how much they've applied, how much of that was
- * approved / got a reply, and — the headline — what they've earned. Earnings
- * are paid per approved application at a rate a team admin/manager sets.
+ * A bidder's personal dashboard: today's / this week's earnings up top, headline
+ * counts, and a per-period (week / month / year) breakdown of their application
+ * counts as both a chart and a table.
  */
 export async function BidderDashboard({
   userId,
   email,
   teamId,
   teamName,
+  period,
 }: {
   userId: string;
   email: string;
   teamId?: string;
   teamName: string | null;
+  period?: string;
 }) {
+  const activePeriod = normalizeBidderPeriod(period);
   const rate = await getApplicationRate(userId, teamId);
-  const stats = await getBidderSelfStats({ userId, teamId, rate });
+  const [stats, counts] = await Promise.all([
+    getBidderSelfStats({ userId, teamId, rate }),
+    getBidderSelfCounts({ userId, teamId, period: activePeriod }),
+  ]);
   const approvalRate = stats.applicationCount > 0 ? (stats.approvedCount / stats.applicationCount) * 100 : 0;
 
   return (
@@ -73,25 +84,32 @@ export async function BidderDashboard({
           }
         />
 
-        {/* Earnings hero */}
+        {/* Earnings hero — today up top, with this-week and all-time alongside */}
         <Card className="border-success/20 bg-gradient-to-br from-success/10 via-card to-card">
-          <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-6 p-6 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-4">
               <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-success/15 text-success">
                 <DollarSignIcon className="size-6" />
               </div>
               <div>
-                <div className="text-sm font-medium text-muted-foreground">This week&apos;s earning</div>
-                <div className="text-4xl font-bold tabular-nums text-foreground">{usd(stats.weeklyEarning)}</div>
+                <div className="text-sm font-medium text-muted-foreground">Today&apos;s earning</div>
+                <div className="text-4xl font-bold tabular-nums text-foreground">{usd(stats.todayEarning)}</div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
-                  {stats.approvedThisWeek} approved this week · {usd(rate)} per approved application
+                  {stats.approvedToday} approved today · {usd(rate)} per approved application
                 </div>
               </div>
             </div>
-            <div className="border-t border-border pt-4 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0 sm:text-right">
-              <div className="text-sm font-medium text-muted-foreground">All-time earned</div>
-              <div className="text-2xl font-semibold tabular-nums text-foreground">{usd(stats.totalEarning)}</div>
-              <div className="text-xs text-muted-foreground">from {stats.approvedCount} approved</div>
+            <div className="grid grid-cols-2 gap-6 border-t border-border pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+              <div>
+                <div className="text-sm font-medium text-muted-foreground">This week</div>
+                <div className="text-2xl font-semibold tabular-nums text-foreground">{usd(stats.weeklyEarning)}</div>
+                <div className="text-xs text-muted-foreground">{stats.approvedThisWeek} approved</div>
+              </div>
+              <div>
+                <div className="text-sm font-medium text-muted-foreground">All-time</div>
+                <div className="text-2xl font-semibold tabular-nums text-foreground">{usd(stats.totalEarning)}</div>
+                <div className="text-xs text-muted-foreground">{stats.approvedCount} approved</div>
+              </div>
             </div>
           </div>
         </Card>
@@ -120,6 +138,89 @@ export async function BidderDashboard({
             hint="Reached the Reply stage"
           />
         </div>
+
+        {/* Application counts over time — week / month / year */}
+        <Card>
+          <CardHeader className="gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex flex-col gap-1">
+                <CardTitle>Your applications over time</CardTitle>
+                <CardDescription>
+                  Applications you logged per {counts.unitNoun}, {PERIOD_NOUN[activePeriod]} — {counts.rangeLabel}.
+                </CardDescription>
+              </div>
+              <BidderPeriodToggle active={activePeriod} />
+            </div>
+          </CardHeader>
+
+          <CardContent className="flex flex-col gap-6">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Total {PERIOD_NOUN[activePeriod]}
+                </div>
+                <div className="mt-1 text-2xl font-bold tabular-nums text-foreground">{counts.total}</div>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Avg / {counts.unitNoun}
+                </div>
+                <div className="mt-1 text-2xl font-bold tabular-nums text-foreground">
+                  {counts.perUnitAverage.toFixed(1)}
+                </div>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Busiest {counts.unitNoun}
+                </div>
+                <div className="mt-1 text-2xl font-bold tabular-nums text-foreground">
+                  {counts.busiestLabel ? counts.busiestCount : "—"}
+                </div>
+                {counts.busiestLabel && (
+                  <div className="mt-0.5 truncate text-xs text-muted-foreground">{counts.busiestLabel}</div>
+                )}
+              </div>
+            </div>
+
+            {counts.total === 0 ? (
+              <div className="rounded-lg border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
+                No applications logged {PERIOD_NOUN[activePeriod]} yet.
+              </div>
+            ) : (
+              <>
+                <LineChart
+                  labels={counts.buckets.map((b) => b.label)}
+                  series={[{ label: "Applications", color: "var(--primary)", values: counts.buckets.map((b) => b.count) }]}
+                />
+
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>{counts.unitNoun === "month" ? "Month" : "Day"}</TableHead>
+                        <TableHead className="text-right">Applications</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {counts.buckets.map((b) => (
+                        <TableRow key={b.key}>
+                          <TableCell className="font-medium text-foreground">{b.label}</TableCell>
+                          <TableCell className="text-right tabular-nums">{b.count}</TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow>
+                        <TableCell className="font-semibold text-foreground">Total</TableCell>
+                        <TableCell className="text-right font-semibold tabular-nums text-foreground">
+                          {counts.total}
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </AppShell>
   );

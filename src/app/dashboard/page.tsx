@@ -79,7 +79,7 @@ function weekLabel(weekStart: string): string {
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ profile?: string; g?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ profile?: string; g?: string; from?: string; to?: string; period?: string }>;
 }) {
   // /dashboard is shared: team admins get the org-wide aggregate below; a
   // bidder gets their personal applications-and-earnings view instead. The edge
@@ -88,12 +88,14 @@ export default async function DashboardPage({
   const isAdmin = ctx.isServiceAdmin || hasTeamAdminPower(ctx.teamRole);
   if (!isAdmin) {
     const activeTeamName = ctx.teams.find((t) => t.id === ctx.activeTeamId)?.name ?? null;
+    const { period } = await searchParams;
     return (
       <BidderDashboard
         userId={ctx.userId}
         email={ctx.email}
         teamId={ctx.activeTeamId ?? undefined}
         teamName={activeTeamName}
+        period={period}
       />
     );
   }
