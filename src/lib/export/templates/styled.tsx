@@ -104,7 +104,7 @@ export function StyledResumeTemplate({ data, style }: { data: ResumeDocument; st
       fontFamily: style.boldFont,
       textAlign: style.nameAlign,
       color: style.accent,
-      marginTop: 7,
+      marginTop: 12,
     },
     contact: {
       fontSize: style.fontSize - 1,
