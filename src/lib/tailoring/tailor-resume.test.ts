@@ -13,6 +13,7 @@ describe("sanitizeTailoredContent (pure)", () => {
   it("drops work history entries with an entryId the candidate doesn't have", () => {
     const result = sanitizeTailoredContent(
       {
+        headline: "h",
         summary: "A summary",
         workHistory: [
           { entryId: "real-1", bullets: ["kept"] },
@@ -30,6 +31,7 @@ describe("sanitizeTailoredContent (pure)", () => {
   it("keeps the model's skill categories (ATS expansion allowed) but trims, dedupes, and drops empties", () => {
     const result = sanitizeTailoredContent(
       {
+        headline: "h",
         summary: "s",
         workHistory: [],
         skillCategories: [
@@ -47,6 +49,7 @@ describe("sanitizeTailoredContent (pure)", () => {
   it("keeps only real certifications, case-insensitively, preserving real casing and model order", () => {
     const result = sanitizeTailoredContent(
       {
+        headline: "h",
         summary: "s",
         workHistory: [],
         skillCategories: [],

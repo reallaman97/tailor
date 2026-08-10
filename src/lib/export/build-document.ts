@@ -3,6 +3,8 @@ import type { StoredTailoredContent } from "@/lib/tailoring/schema";
 
 export type ResumeDocument = {
   fullName: string;
+  /** Tailored professional title/tagline under the name; null when not tailored. */
+  headline: string | null;
   contactEmail: string;
   phone: string;
   linkedinUrl: string | null;
@@ -127,6 +129,7 @@ export function buildResumeDocument(
 
   return {
     fullName: resumeFields.fullName,
+    headline: tailoredContent?.headline?.trim() || null,
     contactEmail: resumeFields.contactEmail,
     phone: resumeFields.phone,
     linkedinUrl: resumeFields.linkedinUrl,

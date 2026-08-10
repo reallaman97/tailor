@@ -64,7 +64,10 @@ export function sanitizeTailoredContent(
     }
   }
 
-  return { summary: raw.summary, workHistory, skillCategories, orderedCertifications };
+  // Cap the headline defensively (a tagline, not a paragraph).
+  const headline = raw.headline.trim().slice(0, 160);
+
+  return { headline, summary: raw.summary, workHistory, skillCategories, orderedCertifications };
 }
 
 export async function tailorResume(userId: string, resumeId: string): Promise<void> {

@@ -10,6 +10,7 @@ const SAMPLE_DOCUMENT: ResumeDocument = {
   linkedinUrl: "https://linkedin.com/in/janedoe",
   city: "Austin",
   state: "TX",
+  headline: "Distributed Systems Specialist | Go & Kafka",
   summary: "Backend engineer focused on distributed systems.",
   workHistory: [
     {
@@ -47,6 +48,7 @@ describe("renderResumePdf", () => {
 
     for (const expected of [
       "Jane Doe",
+      "Distributed Systems Specialist | Go & Kafka",
       "jane@example.com",
       "555-0100",
       "linkedin.com/in/janedoe",

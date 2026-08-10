@@ -141,6 +141,10 @@ export function TailoringDebugView({
 
               {result.content && (
                 <div className="flex flex-col gap-4">
+                  <Section title="Headline">
+                    <p className="text-sm font-medium text-foreground">{result.content.headline}</p>
+                  </Section>
+
                   <Section title="Summary">
                     <p className="whitespace-pre-wrap text-sm text-foreground">{result.content.summary}</p>
                   </Section>

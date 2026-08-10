@@ -78,6 +78,7 @@ describe("buildResumeDocument", () => {
 
   it("substitutes tailored bullets/summary/skill categories only where a matching entryId exists", () => {
     const tailored: TailoredContent = {
+      headline: "Senior Engineer | Cloud",
       summary: "Tailored summary for this job.",
       workHistory: [{ entryId: "entry-new", bullets: ["Tailored new bullet"] }],
       skillCategories: [{ category: "Core", skills: ["Docker", "TypeScript"] }],
@@ -86,6 +87,7 @@ describe("buildResumeDocument", () => {
 
     const doc = buildResumeDocument(BASE_FIELDS, tailored);
     expect(doc.summary).toBe("Tailored summary for this job.");
+    expect(doc.headline).toBe("Senior Engineer | Cloud");
     // entry-new got tailored bullets; entry-old (untouched by tailoring) keeps its original.
     expect(doc.workHistory.find((w) => w.company === "NewCo")?.bullets).toEqual([
       "Tailored new bullet",
@@ -98,6 +100,7 @@ describe("buildResumeDocument", () => {
 
   it("still includes every real work history entry even if tailored content omits one", () => {
     const tailored: TailoredContent = {
+      headline: "h",
       summary: "s",
       workHistory: [{ entryId: "entry-new", bullets: ["only new tailored"] }],
       skillCategories: [],
@@ -111,7 +114,7 @@ describe("buildResumeDocument", () => {
   });
 
   it("falls back to the profile's own skill groups when tailored skillCategories is empty", () => {
-    const tailored: TailoredContent = { summary: "s", workHistory: [], skillCategories: [], orderedCertifications: [] };
+    const tailored: TailoredContent = { headline: "h", summary: "s", workHistory: [], skillCategories: [], orderedCertifications: [] };
     const doc = buildResumeDocument(BASE_FIELDS, tailored);
     expect(doc.skills).toEqual([
       { category: "Languages", skills: ["TypeScript", "Python"] },

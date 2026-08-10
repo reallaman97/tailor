@@ -8,6 +8,9 @@ import { z } from "zod";
  * profile, so a fabricated name simply won't match anything).
  */
 export const tailoredContentSchema = z.object({
+  // A short professional title/tagline rendered under the candidate's name,
+  // e.g. "Senior Full-Stack Engineer | React & Node | Cloud Architecture".
+  headline: z.string(),
   summary: z.string(),
   workHistory: z.array(
     z.object({
@@ -32,6 +35,8 @@ export type TailoredContent = z.infer<typeof tailoredContentSchema>;
  * `skillCategories` or `orderedCertifications` — the renderer tolerates both.
  */
 export type StoredTailoredContent = {
+  /** Professional title/tagline (absent on resumes generated before headlines). */
+  headline?: string;
   summary: string;
   workHistory: { entryId: string; bullets: string[] }[];
   /** Legacy flat skill order (pre-categorization). */

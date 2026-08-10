@@ -89,6 +89,13 @@ export function StyledResumeTemplate({ data, style }: { data: ResumeDocument; st
       textAlign: style.nameAlign,
       color: style.textColor,
     },
+    headline: {
+      fontSize: style.fontSize + 1,
+      fontFamily: style.boldFont,
+      textAlign: style.nameAlign,
+      color: style.accent,
+      marginTop: 3,
+    },
     contact: {
       fontSize: style.fontSize - 1,
       color: style.mutedColor,
@@ -118,6 +125,7 @@ export function StyledResumeTemplate({ data, style }: { data: ResumeDocument; st
     <Document>
       <Page size="LETTER" style={s.page}>
         <Text style={s.name}>{style.nameUpper ? data.fullName.toUpperCase() : data.fullName}</Text>
+        {data.headline && <Text style={s.headline}>{renderRich(data.headline, style.boldFont)}</Text>}
         <Text style={s.contact}>{contactParts.join("  •  ")}</Text>
         {style.headerDivider && <View style={s.divider} />}
 

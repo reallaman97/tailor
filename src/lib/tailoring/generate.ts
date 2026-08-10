@@ -4,14 +4,18 @@ import { tailoredContentSchema, type TailoredContent } from "@/lib/tailoring/sch
 import { getOpenAiApiKey } from "@/lib/settings";
 import type { ResumeFields } from "@/lib/profile/resume-fields";
 
-export const TAILORING_PROMPT_VERSION = "tailoring-v3";
+export const TAILORING_PROMPT_VERSION = "tailoring-v4";
 
-// Appended to whatever system prompt the team configured, so keyword emphasis
-// works for every team without them editing their prompt. The renderer turns
-// **…** into bold text (see styled.tsx renderRich).
-const BOLD_EMPHASIS_INSTRUCTION = `
+// Appended to whatever system prompt the team configured, so the headline and
+// keyword emphasis work for every team without them editing their prompt. The
+// renderer turns **…** into bold text (see styled.tsx renderRich) and renders
+// the headline under the candidate's name.
+const OUTPUT_STYLE_INSTRUCTION = `
+PROFESSIONAL HEADLINE ("headline"):
+Always return a "headline": a single concise title/tagline for under the candidate's name, formatted "[Seniority] [Role] | [Key Skills] | [Specializations]" (e.g. "Senior Full-Stack Engineer | React & Node.js | Cloud Architecture"). Max 120 characters, aligned to the job description and the candidate's real background — never inflate the seniority. Emphasize its 1-2 strongest keywords with **double asterisks**. This tagline is separate from the contact header, which is NOT produced here.
+
 FORMATTING FOR EMPHASIS (bold keywords):
-In the "summary" and in each work-history bullet, mark the keywords most worth enhancing for THIS job — the specific skills, technologies, tools, and quantified achievements that best match the job description — by wrapping them in double asterisks, e.g. **Kubernetes**, **CI/CD pipelines**, or **reduced deployment time by 40%**. Bold sparingly: at most 2-3 short keywords/phrases per bullet, and only the strongest few in the summary. Never bold whole sentences, never use ** in any other field (skills, certifications), and don't emphasize filler words. Use ** only for this emphasis.`;
+In the "headline", "summary", and each work-history bullet, mark the keywords most worth enhancing for THIS job — the specific skills, technologies, tools, and quantified achievements that best match the job description — by wrapping them in double asterisks, e.g. **Kubernetes**, **CI/CD pipelines**, or **reduced deployment time by 40%**. Bold sparingly: at most 2-3 short keywords/phrases per bullet, and only the strongest few in the summary. Never bold whole sentences, never use ** in any other field (skills, certifications), and don't emphasize filler words. Use ** only for this emphasis.`;
 
 // Not cached: the key can change at runtime (a superadmin editing it in
 // Settings), and constructing a client is cheap — no network call happens
@@ -73,7 +77,7 @@ export async function generateTailoredContent(
   try {
     response = await client.responses.parse({
       model: options.model,
-      instructions: options.systemPrompt + "\n" + BOLD_EMPHASIS_INSTRUCTION,
+      instructions: options.systemPrompt + "\n" + OUTPUT_STYLE_INSTRUCTION,
       input: buildInput(resumeFields, jobDescription),
       text: { format: zodTextFormat(tailoredContentSchema, "tailored_content") },
     });

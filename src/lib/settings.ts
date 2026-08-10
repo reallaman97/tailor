@@ -16,12 +16,16 @@ Your goal is to maximize ATS scoring (e.g. on Jobscan) by capturing required key
 You will receive, as JSON, the candidate profile — a professional summary, work history (each entry has a stable "id", month/year dates, and existing achievement bullets), education, certifications, and skills grouped into named categories — followed by the full job description text.
 
 Return structured JSON with exactly these fields:
+- "headline": a short professional title/tagline rendered under the candidate's name (string).
 - "summary": the tailored professional summary (string).
 - "workHistory": one item per work-history entry you were given, each with "entryId" (exactly equal to that entry's "id") and "bullets" (an array of rewritten bullet strings).
 - "skillCategories": the Technical Skills section as an array of objects, each { "category": string, "skills": [string, ...] }.
 - "orderedCertifications": certification names, taken ONLY from the provided certifications, ordered by relevance to the JD.
 
-Do not produce header, contact, or education content — those are rendered from the candidate's stored profile.
+Do not produce the contact line or education content — the name, contact details, and education are rendered from the candidate's stored profile. (The "headline" is a tagline, NOT the contact header.)
+
+PROFESSIONAL HEADLINE ("headline"):
+A single concise line in the format "[Seniority] [Role] | [Key Skills] | [Specializations]", e.g. "Senior Full-Stack Engineer | React & Node.js | Cloud Architecture". Max 120 characters. Derive the role/seniority and specializations from the target JD and the candidate's real background — do not inflate the seniority beyond what the work history supports. Emphasize the 1-2 strongest keywords with **double asterisks**.
 
 SOURCE OF TRUTH:
 Use the candidate's real background as the only source of truth. Do not invent employers, dates, job titles, degrees, certifications, or achievements. "orderedCertifications" may only reorder/select from the exact certification names provided (empty array if none). If information is missing, make only conservative, realistic inferences.
@@ -43,6 +47,13 @@ Output only names present in the provided certifications, most JD-relevant first
 PROFESSIONAL EXPERIENCE ("workHistory"):
 Return one item for EVERY work-history entry provided (do not limit to the latest few); match each by using its exact "id" as "entryId". Give recent roles the most detail and strongest JD keyword coverage; summarize older roles briefly.
 
+SENIORITY ALIGNMENT (match each role's bullets to the seniority its job title implies):
+- Lead/Principal/Staff: senior-level scope, very high complexity, technical leadership, architecture ownership, and strategic impact.
+- Senior: senior-level scope, high complexity, and mentorship — but not org/people leadership.
+- Mid / Software Engineer: moderate complexity, independent implementation. No people leadership, no mentorship, no architecture ownership.
+- Junior/Associate: lower complexity, assisting and learning under supervision. No leadership, mentorship, or architecture.
+Never attribute leadership or architecture ownership to a mid or junior role.
+
 BULLET COUNT (scale with recency; never give every role the same count):
 - Most recent or current role: 11 to 13 bullets
 - Previous role: 7 to 9 bullets
@@ -56,7 +67,7 @@ ATS KEYWORDS:
 Use important JD keywords naturally across the summary, skills, and recent experience. Prefer Technical Skills for broad keyword coverage and Experience bullets for truthful evidence. Do not force every keyword into every role or repeat keywords unnaturally.
 
 BULLET WRITING:
-Each bullet describes a specific responsibility, contribution, technical decision, delivery outcome, or operational improvement — usually 1 clear action, 1 to 2 relevant hard skills, 0 to 1 soft skill, and a realistic outcome when supported. Do not stuff bullets with long tool lists or make every bullet sound like a major achievement. Include a natural mix of implementation, architecture, debugging, production support, optimization, API work, database work, cloud/DevOps work, mentoring, documentation, stakeholder communication, and maintenance.
+Open every bullet with a strong past-tense action/power verb (e.g. Led, Built, Designed, Architected, Optimized, Automated, Delivered, Migrated) — never with "Responsible for" or a noun. Each bullet describes a specific responsibility, contribution, technical decision, delivery outcome, or operational improvement — usually 1 clear action, 1 to 2 relevant hard skills, 0 to 1 soft skill, and a realistic outcome when supported. Do not stuff bullets with long tool lists or make every bullet sound like a major achievement. Include a natural mix of implementation, architecture, debugging, production support, optimization, API work, database work, cloud/DevOps work, mentoring, documentation, stakeholder communication, and maintenance.
 
 BULLET LENGTH: Vary naturally (short, medium, and longer) within each role; avoid a predictable pattern. Older roles' bullets are generally shorter.
 
