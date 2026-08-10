@@ -15,6 +15,25 @@ function jobMeta(job: ResumeDocument["workHistory"][number]): string {
 }
 
 /**
+ * Renders inline **bold** emphasis (added by the AI tailoring to highlight the
+ * keywords worth enhancing) as bold runs, using the style's bold font. Text is
+ * split on `**…**`; those segments render bold, everything else normally. Stray
+ * or unbalanced asterisks are stripped so they never show as literal characters.
+ * Plain text (e.g. a legacy resume with no markers) is returned unchanged.
+ */
+function renderRich(text: string, boldFont: string) {
+  return text.split(/(\*\*[^*]+?\*\*)/g).map((part, i) =>
+    /^\*\*[^*]+?\*\*$/.test(part) ? (
+      <Text key={i} style={{ fontFamily: boldFont }}>
+        {part.slice(2, -2)}
+      </Text>
+    ) : (
+      part.replace(/\*\*/g, "")
+    )
+  );
+}
+
+/**
  * One ATS-safe resume template parameterized by a ResumeStyle. Single column, no
  * tables/images; only typography, color, and section-heading treatment vary by
  * style. Section order is fixed: Summary → Technical Skills → Experience →
@@ -105,7 +124,7 @@ export function StyledResumeTemplate({ data, style }: { data: ResumeDocument; st
         {data.summary && (
           <View style={s.section}>
             <SectionHeading style={style}>Summary</SectionHeading>
-            <Text style={s.paragraph}>{data.summary}</Text>
+            <Text style={s.paragraph}>{renderRich(data.summary, style.boldFont)}</Text>
           </View>
         )}
 
@@ -138,7 +157,7 @@ export function StyledResumeTemplate({ data, style }: { data: ResumeDocument; st
                 </Text>
                 {job.bullets.map((bullet, j) => (
                   <Text key={j} style={s.bullet}>
-                    {style.bulletChar} {bullet}
+                    {style.bulletChar} {renderRich(bullet, style.boldFont)}
                   </Text>
                 ))}
               </View>

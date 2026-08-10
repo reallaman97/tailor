@@ -90,6 +90,30 @@ describe("renderResumePdf", () => {
     expect(text).not.toContain("EDUCATION");
     expect(text).not.toContain("SUMMARY");
   });
+
+  it("renders **bold** keyword emphasis as clean text, stripping the markers (ATS-safe)", async () => {
+    const buffer = await renderResumePdf({
+      ...SAMPLE_DOCUMENT,
+      summary: "Backend engineer skilled in **Kubernetes** and **CI/CD pipelines**.",
+      workHistory: [
+        {
+          ...SAMPLE_DOCUMENT.workHistory[0],
+          bullets: ["Built a **payments service** handling **10k requests/day**"],
+        },
+      ],
+    });
+    const parser = new PDFParse({ data: buffer });
+    const { text } = await parser.getText();
+    await parser.destroy();
+
+    // Emphasized keywords render as normal, extractable text...
+    for (const kw of ["Kubernetes", "CI/CD pipelines", "payments service", "10k requests/day"]) {
+      expect(text).toContain(kw);
+    }
+    // ...and the ** markers never leak into the parsed output (they'd pollute ATS).
+    expect(text).not.toContain("**");
+    expect(text).not.toContain("*Kubernetes");
+  });
 });
 
 describe("renderResumePdf (CLASSIC template)", () => {
