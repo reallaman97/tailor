@@ -13,7 +13,8 @@
     "postinstall": "prisma generate",
     "db:push": "prisma db push",
     "setup": "prisma db push && tsx scripts/setup.ts",
-    "vercel-build": "prisma generate && prisma db push && tsx scripts/setup.ts && next build"
+    "db:deploy": "prisma db push && tsx scripts/setup.ts",
+    "vercel-build": "prisma generate && (prisma db push && tsx scripts/setup.ts || echo '⚠ DB sync skipped — database unreachable at build time; run `npm run db:deploy` against the production DATABASE_URL to apply schema/setup') && next build"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
