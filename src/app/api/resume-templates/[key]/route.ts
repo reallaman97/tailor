@@ -7,6 +7,7 @@ import type { ResumeDocument } from "@/lib/export/build-document";
 /** A representative sample resume used to preview a style in the templates catalog. */
 const SAMPLE: ResumeDocument = {
   fullName: "Jordan Avery",
+  headline: "Senior Backend Engineer | Distributed Systems | Cloud & CI/CD",
   contactEmail: "jordan.avery@example.com",
   phone: "(555) 010-2048",
   linkedinUrl: "linkedin.com/in/jordanavery",
