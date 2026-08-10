@@ -4,7 +4,7 @@ import { tailoredContentSchema, type TailoredContent } from "@/lib/tailoring/sch
 import { getOpenAiApiKey } from "@/lib/settings";
 import type { ResumeFields } from "@/lib/profile/resume-fields";
 
-export const TAILORING_PROMPT_VERSION = "tailoring-v4";
+export const TAILORING_PROMPT_VERSION = "tailoring-v5";
 
 // Appended to whatever system prompt the team configured, so the headline and
 // keyword emphasis work for every team without them editing their prompt. The
@@ -13,6 +13,9 @@ export const TAILORING_PROMPT_VERSION = "tailoring-v4";
 const OUTPUT_STYLE_INSTRUCTION = `
 PROFESSIONAL HEADLINE ("headline"):
 Always return a "headline": a single concise title/tagline for under the candidate's name, formatted "[Seniority] [Role] | [Key Skills] | [Specializations]" (e.g. "Senior Full-Stack Engineer | React & Node.js | Cloud Architecture"). Max 120 characters, aligned to the job description and the candidate's real background — never inflate the seniority. Emphasize its 1-2 strongest keywords with **double asterisks**. This tagline is separate from the contact header, which is NOT produced here.
+
+BULLET DEPTH & KEYWORDS:
+Write full, substantive work-history bullets — each a complete sentence of roughly 20-32 words (about 1.5-2 lines), never terse one-liners or fragments. Every recent-role bullet should weave in 2-4 of the JOB DESCRIPTION's exact keywords/multi-word phrases (technologies, frameworks, methodologies, domain terms — e.g. "event-driven microservices", "CI/CD pipelines", "infrastructure as code") used naturally in context, stating what was done, with which specific technologies, and a realistic outcome. Integrate technologies into the sentence — never a bare comma-separated tool dump — and only include a keyword where it's truthful for that role and era. Vary bullet length naturally so they don't read mechanically.
 
 FORMATTING FOR EMPHASIS (bold keywords):
 In the "headline", "summary", and each work-history bullet, mark the keywords most worth enhancing for THIS job — the specific skills, technologies, tools, and quantified achievements that best match the job description — by wrapping them in double asterisks, e.g. **Kubernetes**, **CI/CD pipelines**, or **reduced deployment time by 40%**. Bold sparingly: at most 2-3 short keywords/phrases per bullet, and only the strongest few in the summary. Never bold whole sentences, never use ** in any other field (skills, certifications), and don't emphasize filler words. Use ** only for this emphasis.`;
