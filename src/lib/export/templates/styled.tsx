@@ -39,38 +39,48 @@ function renderRich(text: string, boldFont: string) {
  * style. Section order is fixed: Summary → Technical Skills → Experience →
  * Education → Certifications.
  */
+// Keep a section heading with the content that follows it: if fewer than this
+// many points remain on the page after the heading, react-pdf pushes the
+// heading to the next page instead of orphaning it (which left a big gap under
+// e.g. "EXPERIENCE" when the first entry couldn't fit on the page).
+const HEADING_MIN_PRESENCE_AHEAD = 56;
+
 function SectionHeading({ style, children }: { style: ResumeStyle; children: string }) {
   const headingSize = style.fontSize + 1;
   const label = style.headingUpper ? children.toUpperCase() : children;
   const base = { fontFamily: style.boldFont, fontSize: headingSize, marginTop: 12, marginBottom: 5 };
+  const orphanGuard = { minPresenceAhead: HEADING_MIN_PRESENCE_AHEAD };
   switch (style.headingStyle) {
     case "bar":
       return (
-        <View style={{ backgroundColor: style.accent, paddingVertical: 2, paddingHorizontal: 5, marginTop: 12, marginBottom: 6 }}>
+        <View
+          {...orphanGuard}
+          style={{ backgroundColor: style.accent, paddingVertical: 2, paddingHorizontal: 5, marginTop: 12, marginBottom: 6 }}
+        >
           <Text style={{ fontFamily: style.boldFont, fontSize: headingSize, color: "#ffffff" }}>{label}</Text>
         </View>
       );
     case "leftBorder":
       return (
-        <Text style={{ ...base, color: style.headingColor, borderLeft: `3pt solid ${style.accent}`, paddingLeft: 6 }}>
+        <Text {...orphanGuard} style={{ ...base, color: style.headingColor, borderLeft: `3pt solid ${style.accent}`, paddingLeft: 6 }}>
           {label}
         </Text>
       );
     case "underline":
       return (
-        <Text style={{ ...base, color: style.headingColor, borderBottom: `1pt solid ${style.accent}`, paddingBottom: 2 }}>
+        <Text {...orphanGuard} style={{ ...base, color: style.headingColor, borderBottom: `1pt solid ${style.accent}`, paddingBottom: 2 }}>
           {label}
         </Text>
       );
     case "centeredUnderline":
       return (
-        <Text style={{ ...base, color: style.headingColor, textAlign: "center", borderBottom: `0.75pt solid ${style.accent}`, paddingBottom: 3 }}>
+        <Text {...orphanGuard} style={{ ...base, color: style.headingColor, textAlign: "center", borderBottom: `0.75pt solid ${style.accent}`, paddingBottom: 3 }}>
           {label}
         </Text>
       );
     case "plain":
     default:
-      return <Text style={{ ...base, color: style.headingColor }}>{label}</Text>;
+      return <Text {...orphanGuard} style={{ ...base, color: style.headingColor }}>{label}</Text>;
   }
 }
 
