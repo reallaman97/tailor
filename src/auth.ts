@@ -20,6 +20,12 @@ export class AccountPendingApprovalError extends CredentialsSignin {
 }
 
 export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth({
+  // Trust the deployment's Host header. In production Auth.js otherwise rejects
+  // every /api/auth request as UntrustedHost (breaking login) unless it detects
+  // a known platform env. Behind a custom domain / proxy that auto-detection is
+  // unreliable, so we set it explicitly. Safe: the host is controlled by our
+  // hosting, and AUTH_SECRET still signs the session.
+  trustHost: true,
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
