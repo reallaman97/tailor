@@ -26,13 +26,17 @@ function parseDate(value?: string): Date | undefined {
 export async function generateInvoiceAction(
   bidderId: string,
   fromKey?: string,
-  toKey?: string
+  toKey?: string,
+  amount?: number
 ): Promise<InvoiceActionResult> {
   const ctx = await requireInvoiceManager();
   const from = parseDate(fromKey);
   const to = parseDate(toKey);
+  if (amount !== undefined && (!Number.isFinite(amount) || amount < 0 || amount > 1_000_000)) {
+    return { ok: false, error: "Enter a valid invoice amount." };
+  }
   try {
-    await generateInvoice(ctx.activeTeamId!, bidderId, ctx.userId, { from, to });
+    await generateInvoice(ctx.activeTeamId!, bidderId, ctx.userId, { from, to, amount });
   } catch (err) {
     if (err instanceof NoBillableApplicationsError) return { ok: false, error: err.message };
     throw err;

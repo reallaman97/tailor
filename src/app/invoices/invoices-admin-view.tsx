@@ -59,7 +59,8 @@ export function InvoicesAdminView({
           <CardTitle>Billing summary</CardTitle>
           <CardDescription>
             Completed applications (proof screenshot, not rejected){teamName ? ` in ${teamName}` : ""} for {fromKey} → {toKey}, split
-            into paid and still-unpaid. Total unbilled: {usd(totalOwed)}.
+            into paid and still-unpaid. Total unbilled: {usd(totalOwed)}. The amount pre-fills to the owed total — edit it before
+            generating to override.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -131,8 +132,10 @@ export function InvoicesAdminView({
 }
 
 function BillingRow({ bidder, fromKey, toKey }: { bidder: BidderBillingRow; fromKey: string; toKey: string }) {
+  const [amount, setAmount] = useState(bidder.amountOwed.toFixed(2));
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const disabled = bidder.unpaidCount === 0;
 
   return (
     <tr className="border-b border-border last:border-0">
@@ -146,20 +149,37 @@ function BillingRow({ bidder, fromKey, toKey }: { bidder: BidderBillingRow; from
       <td className="p-3 text-right tabular-nums text-success">{bidder.paidCount}</td>
       <td className="p-3 text-right tabular-nums font-medium text-foreground">{bidder.unpaidCount}</td>
       <td className="p-3 text-right font-medium tabular-nums text-foreground">{usd(bidder.amountOwed)}</td>
-      <td className="p-3 text-right">
-        <Button
-          size="sm"
-          loading={pending}
-          disabled={bidder.unpaidCount === 0}
-          onClick={() =>
-            start(async () => {
-              const res = await generateInvoiceAction(bidder.userId, fromKey, toKey);
-              setError(res.ok ? null : res.error ?? "Failed");
-            })
-          }
-        >
-          Generate invoice
-        </Button>
+      <td className="p-3">
+        <div className="flex items-center justify-end gap-2">
+          <div className="relative">
+            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              inputMode="decimal"
+              value={amount}
+              disabled={disabled}
+              onChange={(e) => setAmount(e.target.value)}
+              className="h-8 w-24 pl-5 text-xs tabular-nums"
+              aria-label={`Invoice amount for ${bidder.email}`}
+              title="Amount to invoice (defaults to the owed total — edit to override)"
+            />
+          </div>
+          <Button
+            size="sm"
+            loading={pending}
+            disabled={disabled}
+            onClick={() =>
+              start(async () => {
+                const res = await generateInvoiceAction(bidder.userId, fromKey, toKey, Number(amount));
+                setError(res.ok ? null : res.error ?? "Failed");
+              })
+            }
+          >
+            Generate
+          </Button>
+        </div>
       </td>
     </tr>
   );

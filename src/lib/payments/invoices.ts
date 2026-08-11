@@ -278,7 +278,7 @@ export async function generateInvoice(
   teamId: string,
   bidderId: string,
   createdById: string,
-  opts?: { from?: Date; to?: Date }
+  opts?: { from?: Date; to?: Date; amount?: number }
 ): Promise<string> {
   const rate =
     (await db.teamMembership.findUnique({
@@ -293,6 +293,11 @@ export async function generateInvoice(
     });
     if (apps.length === 0) throw new NoBillableApplicationsError();
 
+    // Amount defaults to count × rate but can be overridden when generating
+    // manually (e.g. a negotiated total, rounding, or a bonus/adjustment).
+    const hasOverride = typeof opts?.amount === "number" && Number.isFinite(opts.amount) && opts.amount >= 0;
+    const amount = hasOverride ? Math.round(opts!.amount! * 100) / 100 : apps.length * rate;
+
     const invoice = await tx.invoice.create({
       data: {
         teamId,
@@ -301,7 +306,7 @@ export async function generateInvoice(
         status: "ISSUED",
         applicationCount: apps.length,
         rate,
-        amount: apps.length * rate,
+        amount,
         ...(opts?.to ? { periodEnd: addDaysUTC(startOfDayUTC(opts.to), 1) } : {}),
       },
       select: { id: true },
