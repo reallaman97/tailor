@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { DEFAULT_APPLICATION_RATE } from "@/lib/admin/rates";
+import { BILLABLE_APPLICATION_WHERE } from "@/lib/payments/billable";
 import type { InvoiceStatus } from "@/generated/prisma/client";
 
 /**
@@ -13,12 +14,8 @@ import type { InvoiceStatus } from "@/generated/prisma/client";
  * already-issued invoice.
  */
 
-// Reused where clause for "billable": has a proof screenshot, not rejected.
-// (screenshotMimeType is set alongside screenshotData, and is cheap to filter.)
-const BILLABLE = {
-  screenshotMimeType: { not: null },
-  approvalStatus: { not: "REJECTED" as const },
-};
+// Billable = has a proof screenshot and isn't rejected (shared definition).
+const BILLABLE = BILLABLE_APPLICATION_WHERE;
 
 const MAX_TEXT = 2000; // cap free-text address / payment link
 

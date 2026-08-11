@@ -70,7 +70,7 @@ export async function BidderDashboard({
     getBidderSelfStats({ userId, teamId, rate }),
     getBidderSelfCounts({ userId, teamId, period: activePeriod }),
   ]);
-  const approvalRate = stats.applicationCount > 0 ? (stats.approvedCount / stats.applicationCount) * 100 : 0;
+  const completionRate = stats.applicationCount > 0 ? (stats.completedCount / stats.applicationCount) * 100 : 0;
 
   return (
     <AppShell userEmail={email} isSuperAdmin={false}>
@@ -95,7 +95,7 @@ export async function BidderDashboard({
                 <div className="text-sm font-medium text-muted-foreground">Today&apos;s earning</div>
                 <div className="text-4xl font-bold tabular-nums text-foreground">{usd(stats.todayEarning)}</div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
-                  {stats.approvedToday} approved today · {usd(rate)} per approved application
+                  {stats.completedToday} completed today · {usd(rate)} per completed application
                 </div>
               </div>
             </div>
@@ -103,12 +103,12 @@ export async function BidderDashboard({
               <div>
                 <div className="text-sm font-medium text-muted-foreground">This week</div>
                 <div className="text-2xl font-semibold tabular-nums text-foreground">{usd(stats.weeklyEarning)}</div>
-                <div className="text-xs text-muted-foreground">{stats.approvedThisWeek} approved</div>
+                <div className="text-xs text-muted-foreground">{stats.completedThisWeek} completed</div>
               </div>
               <div>
                 <div className="text-sm font-medium text-muted-foreground">All-time</div>
                 <div className="text-2xl font-semibold tabular-nums text-foreground">{usd(stats.totalEarning)}</div>
-                <div className="text-xs text-muted-foreground">{stats.approvedCount} approved</div>
+                <div className="text-xs text-muted-foreground">{stats.completedCount} completed</div>
               </div>
             </div>
           </div>
@@ -124,11 +124,11 @@ export async function BidderDashboard({
             hint="Total you've logged"
           />
           <StatCard
-            label="Approved"
-            value={String(stats.approvedCount)}
+            label="Completed"
+            value={String(stats.completedCount)}
             icon={<CheckCircleIcon className="size-5" />}
             accent="success"
-            hint={`${approvalRate.toFixed(0)}% approval rate`}
+            hint={`With proof screenshot · ${completionRate.toFixed(0)}%`}
           />
           <StatCard
             label="Replies"
@@ -144,9 +144,10 @@ export async function BidderDashboard({
           <CardHeader className="gap-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex flex-col gap-1">
-                <CardTitle>Your applications over time</CardTitle>
+                <CardTitle>Completed applications over time</CardTitle>
                 <CardDescription>
-                  Applications you logged per {counts.unitNoun}, {PERIOD_NOUN[activePeriod]} — {counts.rangeLabel}.
+                  Completed applications (with a proof screenshot, not rejected) per {counts.unitNoun},{" "}
+                  {PERIOD_NOUN[activePeriod]} — {counts.rangeLabel}.
                 </CardDescription>
               </div>
               <BidderPeriodToggle active={activePeriod} />
@@ -184,7 +185,7 @@ export async function BidderDashboard({
 
             {counts.total === 0 ? (
               <div className="rounded-lg border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
-                No applications logged {PERIOD_NOUN[activePeriod]} yet.
+                No completed applications {PERIOD_NOUN[activePeriod]} yet.
               </div>
             ) : (
               <>

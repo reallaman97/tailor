@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { getProfileNames } from "@/lib/profile/personal-info";
+import { BILLABLE_APPLICATION_WHERE } from "@/lib/payments/billable";
 import {
   POSITIVE_STATUSES,
   INTERVIEW_STATUSES,
@@ -281,22 +282,23 @@ export async function getDashboardAnalytics(filter: DashboardAnalyticsFilter = {
 
 export type BidderSelfStats = {
   applicationCount: number; // every application this bidder logged
-  approvedCount: number; // approvalStatus = APPROVED
+  completedCount: number; // billable: has a proof screenshot and isn't rejected
   repliedCount: number; // reached the Reply stage
-  approvedToday: number; // approved (by approvedAt) today (UTC)
-  approvedThisWeek: number; // approved (by approvedAt) in the current week
-  rate: number; // USD per approved application
-  todayEarning: number; // approvedToday * rate
-  weeklyEarning: number; // approvedThisWeek * rate
-  totalEarning: number; // approvedCount * rate (at the current rate)
+  completedToday: number; // completed (by createdAt) today (UTC)
+  completedThisWeek: number; // completed (by createdAt) in the current week
+  rate: number; // USD per completed application
+  todayEarning: number; // completedToday * rate
+  weeklyEarning: number; // completedThisWeek * rate
+  totalEarning: number; // completedCount * rate (at the current rate)
   weekStartKey: string; // YYYY-MM-DD, Monday of the current week (UTC)
 };
 
 /**
- * A bidder's personal numbers, scoped to their active team. Earnings are paid
- * per APPROVED application (a team admin approves submissions), so the weekly
- * figure counts approvals stamped this week and the all-time total values every
- * approved application at the bidder's current rate.
+ * A bidder's personal numbers, scoped to their active team. Bidders are paid per
+ * COMPLETED application — one with a proof screenshot that isn't rejected
+ * (PENDING or APPROVED both count) — the same definition the invoicing system
+ * bills on. Today/this-week are bucketed by when the application was logged
+ * (createdAt); all-time values every completed application at the current rate.
  */
 export async function getBidderSelfStats(opts: {
   userId: string;
@@ -305,6 +307,7 @@ export async function getBidderSelfStats(opts: {
 }): Promise<BidderSelfStats> {
   const { userId, teamId, rate } = opts;
   const base = { userId, ...(teamId ? { teamId } : {}) };
+  const billable = { ...base, ...BILLABLE_APPLICATION_WHERE };
 
   const now = new Date();
   const dayStart = startOfDayUTC(now);
@@ -312,28 +315,24 @@ export async function getBidderSelfStats(opts: {
   const weekStart = startOfWeek(now);
   const weekEnd = addDaysUTC(weekStart, 7);
 
-  const [applicationCount, approvedCount, repliedCount, approvedToday, approvedThisWeek] = await Promise.all([
+  const [applicationCount, completedCount, repliedCount, completedToday, completedThisWeek] = await Promise.all([
     db.resume.count({ where: base }),
-    db.resume.count({ where: { ...base, approvalStatus: "APPROVED" } }),
+    db.resume.count({ where: billable }),
     db.resume.count({ where: { ...base, statuses: { has: "REPLY" } } }),
-    db.resume.count({
-      where: { ...base, approvalStatus: "APPROVED", approvedAt: { gte: dayStart, lt: dayEnd } },
-    }),
-    db.resume.count({
-      where: { ...base, approvalStatus: "APPROVED", approvedAt: { gte: weekStart, lt: weekEnd } },
-    }),
+    db.resume.count({ where: { ...billable, createdAt: { gte: dayStart, lt: dayEnd } } }),
+    db.resume.count({ where: { ...billable, createdAt: { gte: weekStart, lt: weekEnd } } }),
   ]);
 
   return {
     applicationCount,
-    approvedCount,
+    completedCount,
     repliedCount,
-    approvedToday,
-    approvedThisWeek,
+    completedToday,
+    completedThisWeek,
     rate,
-    todayEarning: approvedToday * rate,
-    weeklyEarning: approvedThisWeek * rate,
-    totalEarning: approvedCount * rate,
+    todayEarning: completedToday * rate,
+    weeklyEarning: completedThisWeek * rate,
+    totalEarning: completedCount * rate,
     weekStartKey: dateOnly(weekStart),
   };
 }
@@ -416,6 +415,7 @@ export async function getBidderSelfCounts(opts: {
     where: {
       userId,
       ...(teamId ? { teamId } : {}),
+      ...BILLABLE_APPLICATION_WHERE, // completed applications only (with screenshot, not rejected)
       createdAt: { gte: rangeStart, lt: rangeEnd },
     },
     select: { createdAt: true },
