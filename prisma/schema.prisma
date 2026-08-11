@@ -77,6 +77,9 @@ model User {
   // authoritative until the Phase 2 auth cutover.
   memberships TeamMembership[]
 
+  // Payments: invoices billed to this user as a bidder.
+  bidderInvoices Invoice[] @relation("BidderInvoices")
+
   @@index([profileId])
 }
 
@@ -330,12 +333,18 @@ model Resume {
   teamId String?
   team   Team?  @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
+  // Payments: the invoice that billed this application. Null = not yet invoiced
+  // ("unpaid"). SetNull so cancelling/deleting an invoice releases its apps.
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
   @@index([userId])
   @@index([profileId])
   @@index([userId, roleTrack])
   @@index([userId, source])
   @@index([approvalStatus])
   @@index([teamId])
+  @@index([invoiceId])
 }
 
 // ── LLM usage tracking (cost visibility + rate limiting) ──
@@ -734,6 +743,7 @@ model Team {
   interviewStages       InterviewStage[]
   interviewStatuses     InterviewStatus[]
   interviewMeetingTypes InterviewMeetingType[]
+  invoices              Invoice[]
 
   @@index([active])
 }
@@ -782,4 +792,54 @@ model TeamSettings {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ── Payments / invoicing ──────────────────────────────────────────────
+// A bill for a bidder covering their unpaid "billable" applications (those
+// with a proof screenshot that aren't rejected). Generating an invoice locks
+// those applications to it (Resume.invoiceId), so the next invoice only picks
+// up applications logged since. The amount is a snapshot (count × rate) so a
+// later rate change doesn't retroactively alter an issued invoice.
+
+enum InvoiceStatus {
+  ISSUED // generated, awaiting our payment
+  PAID // paid out — completed, with a payment link
+  CANCELED // voided; its applications are released back to "unpaid"
+}
+
+model Invoice {
+  id       String @id @default(cuid())
+  teamId   String
+  team     Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  // The bidder being paid.
+  bidderId String
+  bidder   User   @relation("BidderInvoices", fields: [bidderId], references: [id], onDelete: Cascade)
+  // Who generated it (team admin / manager). Plain id — no back-relation needed.
+  createdById String
+
+  status InvoiceStatus @default(ISSUED)
+
+  // Snapshot at generation time.
+  applicationCount Int
+  rate             Float
+  amount           Float
+
+  // Bidder-provided payout destination (crypto/bank/PayPal — free text).
+  paymentAddress String?
+  // Set when marked paid: a link/reference to the payment (tx hash, receipt URL).
+  paymentLink String?
+  paidAt      DateTime?
+
+  // Everything up to this instant was considered when billing.
+  periodEnd DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The applications this invoice bills.
+  applications Resume[]
+
+  @@index([teamId])
+  @@index([bidderId])
+  @@index([status])
 }

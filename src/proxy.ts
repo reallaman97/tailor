@@ -1,12 +1,14 @@
 import { auth } from "@/auth";
 import { hasTeamAdminPower, isServiceAdmin } from "@/lib/auth/roles";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/resumes", "/rates", "/admin", "/account", "/interview", "/platform"];
+const PROTECTED_PREFIXES = ["/dashboard", "/profile", "/resumes", "/rates", "/invoices", "/admin", "/account", "/interview", "/platform"];
 // Admin roles (SERVICE_ADMIN/TEAM_ADMIN, plus legacy SUPERADMIN) can reach every tool.
 const RESUME_PLATFORM_ROLES = new Set(["SUPERADMIN", "SERVICE_ADMIN", "TEAM_ADMIN", "BIDDER"]);
 const INTERVIEW_ROLES = new Set(["SUPERADMIN", "SERVICE_ADMIN", "TEAM_ADMIN", "MANAGER", "CALLER"]);
 // Bidder-rate management lives in the Resume Platform — team admins only.
 const RATE_ROLES = new Set(["SUPERADMIN", "SERVICE_ADMIN", "TEAM_ADMIN"]);
+// Invoices: bidders (own), plus team admins and Managers (manage). Not callers.
+const INVOICE_ROLES = new Set(["SUPERADMIN", "SERVICE_ADMIN", "TEAM_ADMIN", "MANAGER", "BIDDER"]);
 
 // UX convenience only — redirects logged-out visitors away from protected
 // pages, non-admins away from /admin, and roles without Resume Platform
@@ -51,6 +53,15 @@ export default auth((req) => {
     return Response.redirect(new URL("/", req.nextUrl));
   }
 
+  // /invoices: bidders see their own; team admins/managers manage them.
+  if (
+    req.nextUrl.pathname.startsWith("/invoices") &&
+    req.auth?.user?.role &&
+    !INVOICE_ROLES.has(req.auth.user.role)
+  ) {
+    return Response.redirect(new URL("/", req.nextUrl));
+  }
+
   // /platform is the platform owner (Service Real Admin) area.
   if (req.nextUrl.pathname.startsWith("/platform") && !isServiceAdmin(req.auth?.user?.role)) {
     return Response.redirect(new URL("/", req.nextUrl));
@@ -79,6 +90,7 @@ export const config = {
     "/profile/:path*",
     "/resumes/:path*",
     "/rates/:path*",
+    "/invoices/:path*",
     "/admin/:path*",
     "/account/:path*",
     "/interview/:path*",

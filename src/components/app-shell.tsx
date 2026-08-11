@@ -8,6 +8,7 @@ const RESUME_BUILDER: ShellNavLink = { href: "/resumes/new", label: "Resume Buil
 const APPLICATIONS: ShellNavLink = { href: "/resumes", label: "Applications", icon: FileTextIcon };
 const CHECKS: ShellNavLink = { href: "/checks", label: "Application Checks", icon: CheckCircleIcon };
 const RATES: ShellNavLink = { href: "/rates", label: "Bidder Rates", icon: DollarSignIcon };
+const INVOICES: ShellNavLink = { href: "/invoices", label: "Invoices", icon: DollarSignIcon };
 
 /**
  * Resume Platform's shell. Dashboard is superadmin-only (an org-wide aggregate,
@@ -33,8 +34,8 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const links = isSuperAdmin
-    ? [DASHBOARD, RESUME_BUILDER, APPLICATIONS, CHECKS, RATES]
-    : [DASHBOARD, RESUME_BUILDER, APPLICATIONS];
+    ? [DASHBOARD, RESUME_BUILDER, APPLICATIONS, CHECKS, RATES, INVOICES]
+    : [DASHBOARD, RESUME_BUILDER, APPLICATIONS, INVOICES];
 
   return (
     <SidebarShell
