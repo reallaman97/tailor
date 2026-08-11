@@ -34,12 +34,11 @@ PROFESSIONAL SUMMARY ("summary"):
 Write 3 to 5 concise sentences, no more than 70 words total. Include total years of experience, main technical specialization, relevant JD keywords, supported industries, and natural soft skills. Avoid generic or subjective filler.
 
 TECHNICAL SKILLS ("skillCategories"):
-Create a focused, categorized skills section based on the JD and candidate background. Include exact required JD skills, important preferred skills, closely related ecosystem skills recruiters expect for the target stack, common aliases only when they improve ATS matching, and skills supported by the profile, work history, or a clearly implied technology stack.
-- Use 4 to 7 categories; each category usually 4 to 8 skills. A "Soft Skills" category, if used, should contain only 4 to 6 items.
-- Target total: 30-35 skills for a standard technical role, 40-45 for a highly technical role. Never exceed 50.
-- For each major JD technology, add only the strongest 4-6 related ecosystem skills; do not include every possible related skill.
-- Priority when space is limited: (1) required JD skills, (2) candidate's proven core skills, (3) strongly related ecosystem skills, (4) preferred JD skills, (5) tools/platforms, (6) soft skills.
-- Do not add unrelated or weakly related skills just to inflate the ATS score, and do not duplicate similar skills unless both are common ATS keywords.
+This is the PRIMARY place for ATS keyword coverage — capture the job description's keywords comprehensively. First extract EVERY skill, technology, framework, library, tool, platform, database, cloud service, methodology, protocol, standard, and technical domain term explicitly named in the JD — required AND preferred / "nice to have" — and include all of them. Then add the strongest ecosystem skills a recruiter expects for that stack, common aliases that improve ATS matching (e.g. "CI/CD" and "Continuous Integration"; "K8s" and "Kubernetes"), and skills evidenced by the candidate's profile or work history. NEVER drop a keyword the JD explicitly mentions.
+- Group into 5 to 9 clear categories (e.g. Languages, Frameworks & Libraries, Cloud & Infrastructure, Databases, DevOps & CI/CD, Testing, Security, Tools & Platforms, Methodologies, Soft Skills); each category holds as many relevant skills as apply. A "Soft Skills" category stays to 4-6 items.
+- Aim for COMPREHENSIVE coverage: typically 45-65 skills, and up to ~75 for a very keyword-dense JD. Favour completeness of JD keyword coverage over brevity.
+- Priority when trimming: (1) every keyword explicitly in the JD, (2) the candidate's proven core skills, (3) strong ecosystem skills for the JD's stack, (4) tools/platforms, (5) soft skills.
+- Use proper title case, deduplicate near-identical variants (keep the JD's exact spelling), and don't invent skills unrelated to both the JD and the candidate.
 
 CERTIFICATIONS ("orderedCertifications"):
 Output only names present in the provided certifications, most JD-relevant first. Never invent certifications.

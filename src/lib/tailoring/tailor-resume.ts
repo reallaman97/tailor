@@ -15,7 +15,7 @@ export class ProfileIncompleteError extends Error {
   }
 }
 
-const MAX_SKILLS = 50;
+const MAX_SKILLS = 90; // generous — allow comprehensive JD keyword coverage in the Skills section
 
 /**
  * Filters the model's output against the candidate's real data:

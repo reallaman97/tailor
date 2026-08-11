@@ -4,7 +4,7 @@ import { tailoredContentSchema, type TailoredContent } from "@/lib/tailoring/sch
 import { getOpenAiApiKey } from "@/lib/settings";
 import type { ResumeFields } from "@/lib/profile/resume-fields";
 
-export const TAILORING_PROMPT_VERSION = "tailoring-v5";
+export const TAILORING_PROMPT_VERSION = "tailoring-v6";
 
 // Appended to whatever system prompt the team configured, so the headline and
 // keyword emphasis work for every team without them editing their prompt. The
@@ -13,6 +13,9 @@ export const TAILORING_PROMPT_VERSION = "tailoring-v5";
 const OUTPUT_STYLE_INSTRUCTION = `
 PROFESSIONAL HEADLINE ("headline"):
 Always return a "headline": a single concise title/tagline for under the candidate's name, formatted "[Seniority] [Role] | [Key Skills] | [Specializations]" (e.g. "Senior Full-Stack Engineer | React & Node.js | Cloud Architecture"). Max 120 characters, aligned to the job description and the candidate's real background — never inflate the seniority. Emphasize its 1-2 strongest keywords with **double asterisks**. This tagline is separate from the contact header, which is NOT produced here.
+
+JD KEYWORD COVERAGE ("skillCategories"):
+The Technical Skills section is the primary ATS keyword surface — capture the job description comprehensively. Include EVERY skill, technology, framework, library, tool, platform, database, cloud service, methodology, and technical domain term explicitly named in the JD (required AND preferred/"nice to have"), plus the strongest ecosystem skills and common aliases for that stack (e.g. "CI/CD" + "Continuous Integration", "K8s" + "Kubernetes"). Never omit a keyword the JD explicitly mentions. Aim for comprehensive coverage — typically 45-65 skills grouped into 5-9 clear, title-cased, deduplicated categories.
 
 BULLET DEPTH & KEYWORDS:
 Write full, substantive work-history bullets — each a complete sentence of roughly 20-32 words (about 1.5-2 lines), never terse one-liners or fragments. Every recent-role bullet should weave in 2-4 of the JOB DESCRIPTION's exact keywords/multi-word phrases (technologies, frameworks, methodologies, domain terms — e.g. "event-driven microservices", "CI/CD pipelines", "infrastructure as code") used naturally in context, stating what was done, with which specific technologies, and a realistic outcome. Integrate technologies into the sentence — never a bare comma-separated tool dump — and only include a keyword where it's truthful for that role and era. Vary bullet length naturally so they don't read mechanically.
