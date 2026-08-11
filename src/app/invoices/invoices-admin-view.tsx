@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { UsersIcon, ExternalLinkIcon } from "@/components/icons";
-import type { BidderBillingRow, InvoiceRow } from "@/lib/payments/invoices";
+import type { BidderBillingRow, InvoiceRow, BiddingActivity } from "@/lib/payments/invoices";
+import { DateRangeControls } from "./date-range-controls";
 import { generateInvoiceAction, markInvoicePaidAction, cancelInvoiceAction } from "./actions";
 
 function usd(n: number): string {
@@ -24,22 +25,41 @@ function StatusBadge({ status }: { status: InvoiceRow["status"] }) {
 export function InvoicesAdminView({
   summaries,
   invoices,
+  activity,
   teamName,
+  fromKey,
+  toKey,
 }: {
   summaries: BidderBillingRow[];
   invoices: InvoiceRow[];
+  activity: BiddingActivity;
   teamName: string | null;
+  fromKey: string;
+  toKey: string;
 }) {
   const totalOwed = summaries.reduce((s, r) => s + r.amountOwed, 0);
 
   return (
     <div className="flex flex-col gap-6">
       <Card>
+        <CardHeader className="gap-3">
+          <div className="flex flex-col gap-1">
+            <CardTitle>Date range</CardTitle>
+            <CardDescription>
+              All figures below cover applications logged between these dates. Generating an invoice bills the unpaid
+              completed applications in this range.
+            </CardDescription>
+          </div>
+          <DateRangeControls from={fromKey} to={toKey} />
+        </CardHeader>
+      </Card>
+
+      <Card>
         <CardHeader>
-          <CardTitle>Amounts owed</CardTitle>
+          <CardTitle>Billing summary</CardTitle>
           <CardDescription>
-            Unpaid completed applications (with a proof screenshot, not rejected) per bidder{teamName ? ` in ${teamName}` : ""}
-            . Generating an invoice bills these and the next one starts from what's logged after. Total unbilled: {usd(totalOwed)}.
+            Completed applications (proof screenshot, not rejected){teamName ? ` in ${teamName}` : ""} for {fromKey} → {toKey}, split
+            into paid and still-unpaid. Total unbilled: {usd(totalOwed)}.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -54,14 +74,16 @@ export function InvoicesAdminView({
                   <tr className="border-b border-border text-left">
                     <th className="p-3 font-medium text-muted-foreground">Bidder</th>
                     <th className="p-3 text-right font-medium text-muted-foreground">Rate</th>
-                    <th className="p-3 text-right font-medium text-muted-foreground">Unpaid completed</th>
+                    <th className="p-3 text-right font-medium text-muted-foreground">Completed</th>
+                    <th className="p-3 text-right font-medium text-muted-foreground">Paid</th>
+                    <th className="p-3 text-right font-medium text-muted-foreground">Unpaid</th>
                     <th className="p-3 text-right font-medium text-muted-foreground">Amount owed</th>
                     <th className="p-3 text-right font-medium text-muted-foreground">Action</th>
                   </tr>
                 </thead>
                 <tbody>
                   {summaries.map((b) => (
-                    <BillingRow key={b.userId} bidder={b} />
+                    <BillingRow key={b.userId} bidder={b} fromKey={fromKey} toKey={toKey} />
                   ))}
                 </tbody>
               </table>
@@ -69,6 +91,8 @@ export function InvoicesAdminView({
           )}
         </CardContent>
       </Card>
+
+      <ActivityCard activity={activity} />
 
       <Card>
         <CardHeader>
@@ -106,7 +130,7 @@ export function InvoicesAdminView({
   );
 }
 
-function BillingRow({ bidder }: { bidder: BidderBillingRow }) {
+function BillingRow({ bidder, fromKey, toKey }: { bidder: BidderBillingRow; fromKey: string; toKey: string }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -118,7 +142,9 @@ function BillingRow({ bidder }: { bidder: BidderBillingRow }) {
         {error && <div className="mt-1 text-xs text-destructive">{error}</div>}
       </td>
       <td className="p-3 text-right tabular-nums">{usd(bidder.rate)}</td>
-      <td className="p-3 text-right tabular-nums">{bidder.unpaidCount}</td>
+      <td className="p-3 text-right tabular-nums">{bidder.completedCount}</td>
+      <td className="p-3 text-right tabular-nums text-success">{bidder.paidCount}</td>
+      <td className="p-3 text-right tabular-nums font-medium text-foreground">{bidder.unpaidCount}</td>
       <td className="p-3 text-right font-medium tabular-nums text-foreground">{usd(bidder.amountOwed)}</td>
       <td className="p-3 text-right">
         <Button
@@ -127,7 +153,7 @@ function BillingRow({ bidder }: { bidder: BidderBillingRow }) {
           disabled={bidder.unpaidCount === 0}
           onClick={() =>
             start(async () => {
-              const res = await generateInvoiceAction(bidder.userId);
+              const res = await generateInvoiceAction(bidder.userId, fromKey, toKey);
               setError(res.ok ? null : res.error ?? "Failed");
             })
           }
@@ -139,11 +165,85 @@ function BillingRow({ bidder }: { bidder: BidderBillingRow }) {
   );
 }
 
+function ActivityCard({ activity }: { activity: BiddingActivity }) {
+  const { days, rows, totalsPerDay } = activity;
+  const grandWith = rows.reduce((s, r) => s + r.totalWith, 0);
+  const grandWithout = rows.reduce((s, r) => s + r.totalWithout, 0);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Bidding activity — per person, per day</CardTitle>
+        <CardDescription>
+          Applications logged each day. Each cell shows <span className="font-medium text-foreground">with screenshot</span> /{" "}
+          <span className="text-muted-foreground">without</span>. In range: {grandWith} with screenshot, {grandWithout} without.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        {rows.length === 0 ? (
+          <div className="p-6 text-sm text-muted-foreground">No applications logged in this range.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-max border-separate border-spacing-0 text-sm">
+              <thead>
+                <tr>
+                  <th className="sticky left-0 z-10 bg-card p-2.5 text-left font-medium text-muted-foreground">Bidder</th>
+                  {days.map((d) => (
+                    <th key={d.key} className="whitespace-nowrap p-2.5 text-right font-medium text-muted-foreground">
+                      {d.label}
+                    </th>
+                  ))}
+                  <th className="p-2.5 text-right font-semibold text-foreground">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.userId} className="border-t border-border">
+                    <td className="sticky left-0 z-10 whitespace-nowrap bg-card p-2.5 font-medium text-foreground">{r.name}</td>
+                    {r.perDay.map((d, i) => (
+                      <td key={days[i].key} className="p-2.5 text-right tabular-nums">
+                        {d.withScreenshot === 0 && d.withoutScreenshot === 0 ? (
+                          <span className="text-muted-foreground/40">·</span>
+                        ) : (
+                          <span>
+                            <span className="text-foreground">{d.withScreenshot}</span>
+                            <span className="text-muted-foreground"> / {d.withoutScreenshot}</span>
+                          </span>
+                        )}
+                      </td>
+                    ))}
+                    <td className="p-2.5 text-right font-semibold tabular-nums text-foreground">
+                      {r.totalWith}
+                      <span className="text-muted-foreground"> / {r.totalWithout}</span>
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t-2 border-border">
+                  <td className="sticky left-0 z-10 bg-card p-2.5 font-semibold text-foreground">Total</td>
+                  {totalsPerDay.map((t, i) => (
+                    <td key={days[i].key} className="p-2.5 text-right font-semibold tabular-nums text-foreground">
+                      {t.withScreenshot}
+                      <span className="text-muted-foreground"> / {t.withoutScreenshot}</span>
+                    </td>
+                  ))}
+                  <td className="p-2.5 text-right font-bold tabular-nums text-primary">
+                    {grandWith}
+                    <span className="text-muted-foreground"> / {grandWithout}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function InvoiceAdminRow({ invoice }: { invoice: InvoiceRow }) {
   const [link, setLink] = useState("");
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const issued = invoice.status === "ISSUED";
 
   return (
     <tr className="border-b border-border align-top last:border-0">
@@ -161,7 +261,7 @@ function InvoiceAdminRow({ invoice }: { invoice: InvoiceRow }) {
         {invoice.paymentAddress ? (
           <span className="break-all text-xs text-foreground">{invoice.paymentAddress}</span>
         ) : (
-          <span className="text-xs text-muted-foreground">{issued ? "Awaiting bidder…" : "—"}</span>
+          <span className="text-xs text-muted-foreground">{invoice.status === "ISSUED" ? "Awaiting bidder…" : "—"}</span>
         )}
       </td>
       <td className="p-3">

@@ -13,11 +13,26 @@ import {
 
 export type InvoiceActionResult = { ok: boolean; error?: string };
 
-/** Team admin / manager: generate an invoice for a bidder's unpaid billable apps. */
-export async function generateInvoiceAction(bidderId: string): Promise<InvoiceActionResult> {
+function parseDate(value?: string): Date | undefined {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const d = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+/**
+ * Team admin / manager: generate an invoice for a bidder's unpaid billable apps.
+ * When from/to (YYYY-MM-DD) are given, only applications logged in that range are billed.
+ */
+export async function generateInvoiceAction(
+  bidderId: string,
+  fromKey?: string,
+  toKey?: string
+): Promise<InvoiceActionResult> {
   const ctx = await requireInvoiceManager();
+  const from = parseDate(fromKey);
+  const to = parseDate(toKey);
   try {
-    await generateInvoice(ctx.activeTeamId!, bidderId, ctx.userId);
+    await generateInvoice(ctx.activeTeamId!, bidderId, ctx.userId, { from, to });
   } catch (err) {
     if (err instanceof NoBillableApplicationsError) return { ok: false, error: err.message };
     throw err;

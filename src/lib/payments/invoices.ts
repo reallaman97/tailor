@@ -18,6 +18,30 @@ import type { InvoiceStatus } from "@/generated/prisma/client";
 const BILLABLE = BILLABLE_APPLICATION_WHERE;
 
 const MAX_TEXT = 2000; // cap free-text address / payment link
+const MAX_ACTIVITY_DAYS = 92; // cap the per-day matrix width
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function ymd(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+function startOfDayUTC(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+function addDaysUTC(d: Date, n: number): Date {
+  const x = new Date(d);
+  x.setUTCDate(x.getUTCDate() + n);
+  return x;
+}
+function dayLabel(key: string): string {
+  const d = new Date(`${key}T00:00:00.000Z`);
+  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
+/** A createdAt-in-range filter for the given inclusive [from, to] dates (or {} if unset). */
+function dateRangeWhere(from?: Date, to?: Date) {
+  if (!from || !to) return {};
+  return { createdAt: { gte: startOfDayUTC(from), lt: addDaysUTC(startOfDayUTC(to), 1) } };
+}
 
 export class NoBillableApplicationsError extends Error {
   constructor() {
@@ -38,15 +62,18 @@ export type BidderBillingRow = {
   name: string;
   email: string;
   rate: number;
-  unpaidCount: number; // unpaid billable applications
+  completedCount: number; // billable applications in range
+  paidCount: number; // billable-in-range that belong to a PAID invoice
+  unpaidCount: number; // billable-in-range not yet on any invoice
   amountOwed: number; // unpaidCount × rate
 };
 
 /**
- * Per-bidder "what's owed right now" for the team's invoicing screen: each
- * bidder with their rate and the count/amount of unpaid billable applications.
+ * Per-bidder billing for the invoicing screen, scoped to [from, to] (or all time
+ * if unset): each bidder with their rate and how many completed (billable)
+ * applications are paid vs. still unpaid, plus the amount owed on the unpaid ones.
  */
-export async function getBidderBillingSummaries(teamId: string): Promise<BidderBillingRow[]> {
+export async function getBidderBillingSummaries(teamId: string, from?: Date, to?: Date): Promise<BidderBillingRow[]> {
   const memberships = await db.teamMembership.findMany({
     where: { teamId, role: "BIDDER" },
     select: { userId: true, applicationRate: true, user: { select: { email: true, username: true } } },
@@ -54,27 +81,114 @@ export async function getBidderBillingSummaries(teamId: string): Promise<BidderB
   if (memberships.length === 0) return [];
 
   const bidderIds = memberships.map((m) => m.userId);
-  const grouped = await db.resume.groupBy({
-    by: ["userId"],
-    where: { teamId, invoiceId: null, userId: { in: bidderIds }, ...BILLABLE },
-    _count: { _all: true },
-  });
-  const unpaidByUser = new Map(grouped.map((g) => [g.userId, g._count._all]));
+  const billableRange = { teamId, userId: { in: bidderIds }, ...BILLABLE, ...dateRangeWhere(from, to) };
+
+  const [completed, unpaid, paid] = await Promise.all([
+    db.resume.groupBy({ by: ["userId"], where: billableRange, _count: { _all: true } }),
+    db.resume.groupBy({ by: ["userId"], where: { ...billableRange, invoiceId: null }, _count: { _all: true } }),
+    db.resume.groupBy({ by: ["userId"], where: { ...billableRange, invoice: { status: "PAID" } }, _count: { _all: true } }),
+  ]);
+  const completedBy = new Map(completed.map((g) => [g.userId, g._count._all]));
+  const unpaidBy = new Map(unpaid.map((g) => [g.userId, g._count._all]));
+  const paidBy = new Map(paid.map((g) => [g.userId, g._count._all]));
 
   return memberships
     .map((m) => {
       const rate = m.applicationRate ?? DEFAULT_APPLICATION_RATE;
-      const unpaidCount = unpaidByUser.get(m.userId) ?? 0;
+      const unpaidCount = unpaidBy.get(m.userId) ?? 0;
       return {
         userId: m.userId,
         name: m.user.username ?? m.user.email,
         email: m.user.email,
         rate,
+        completedCount: completedBy.get(m.userId) ?? 0,
+        paidCount: paidBy.get(m.userId) ?? 0,
         unpaidCount,
         amountOwed: unpaidCount * rate,
       };
     })
     .sort((a, b) => b.amountOwed - a.amountOwed || a.name.localeCompare(b.name));
+}
+
+// ── Per-person, per-day bidding activity (with screenshot vs without) ──
+
+export type BiddingActivity = {
+  days: { key: string; label: string }[];
+  rows: {
+    userId: string;
+    name: string;
+    email: string;
+    perDay: { withScreenshot: number; withoutScreenshot: number }[]; // aligned to days
+    totalWith: number;
+    totalWithout: number;
+  }[];
+  totalsPerDay: { withScreenshot: number; withoutScreenshot: number }[];
+};
+
+/**
+ * How many applications each person logged per day over [from, to], split into
+ * those WITH a proof screenshot and those without. The matrix is capped to the
+ * most recent {@link MAX_ACTIVITY_DAYS} days.
+ */
+export async function getBiddingActivity(teamId: string, from: Date, to: Date): Promise<BiddingActivity> {
+  const start = startOfDayUTC(from);
+  const endExclusive = addDaysUTC(startOfDayUTC(to), 1);
+
+  const allKeys: string[] = [];
+  for (let d = new Date(start); d < endExclusive; d = addDaysUTC(d, 1)) allKeys.push(ymd(d));
+  const keys = allKeys.slice(-MAX_ACTIVITY_DAYS);
+  const days = keys.map((k) => ({ key: k, label: dayLabel(k) }));
+  const dayIndex = new Map(keys.map((k, i) => [k, i]));
+  const effectiveStart = keys.length ? new Date(`${keys[0]}T00:00:00.000Z`) : start;
+
+  const resumes = await db.resume.findMany({
+    where: { teamId, createdAt: { gte: effectiveStart, lt: endExclusive } },
+    select: {
+      userId: true,
+      createdAt: true,
+      screenshotMimeType: true,
+      user: { select: { username: true, email: true } },
+    },
+  });
+
+  type Bucket = { name: string; email: string; perDay: { withScreenshot: number; withoutScreenshot: number }[] };
+  const byUser = new Map<string, Bucket>();
+  const totalsPerDay = keys.map(() => ({ withScreenshot: 0, withoutScreenshot: 0 }));
+
+  for (const r of resumes) {
+    const idx = dayIndex.get(ymd(startOfDayUTC(r.createdAt)));
+    if (idx === undefined) continue;
+    let b = byUser.get(r.userId);
+    if (!b) {
+      b = {
+        name: r.user?.username ?? r.user?.email ?? "Unknown",
+        email: r.user?.email ?? "",
+        perDay: keys.map(() => ({ withScreenshot: 0, withoutScreenshot: 0 })),
+      };
+      byUser.set(r.userId, b);
+    }
+    const has = r.screenshotMimeType != null;
+    if (has) {
+      b.perDay[idx].withScreenshot++;
+      totalsPerDay[idx].withScreenshot++;
+    } else {
+      b.perDay[idx].withoutScreenshot++;
+      totalsPerDay[idx].withoutScreenshot++;
+    }
+  }
+
+  const rows = [...byUser.entries()]
+    .map(([userId, b]) => ({
+      userId,
+      name: b.name,
+      email: b.email,
+      perDay: b.perDay,
+      totalWith: b.perDay.reduce((s, d) => s + d.withScreenshot, 0),
+      totalWithout: b.perDay.reduce((s, d) => s + d.withoutScreenshot, 0),
+    }))
+    .sort((a, b) => b.totalWith + b.totalWithout - (a.totalWith + a.totalWithout) || a.name.localeCompare(b.name));
+
+  return { days, rows, totalsPerDay };
 }
 
 export type InvoiceRow = {
@@ -156,10 +270,16 @@ export async function listBidderInvoices(teamId: string, bidderId: string): Prom
 }
 
 /**
- * Generates an invoice for a bidder's currently-unpaid billable applications and
- * locks them to it. Atomic: the exact applications counted are the ones tagged.
+ * Generates an invoice for a bidder's unpaid billable applications and locks them
+ * to it. When a [from, to] range is given, only applications logged in that range
+ * are billed. Atomic: the exact applications counted are the ones tagged.
  */
-export async function generateInvoice(teamId: string, bidderId: string, createdById: string): Promise<string> {
+export async function generateInvoice(
+  teamId: string,
+  bidderId: string,
+  createdById: string,
+  opts?: { from?: Date; to?: Date }
+): Promise<string> {
   const rate =
     (await db.teamMembership.findUnique({
       where: { userId_teamId: { userId: bidderId, teamId } },
@@ -168,7 +288,7 @@ export async function generateInvoice(teamId: string, bidderId: string, createdB
 
   return db.$transaction(async (tx) => {
     const apps = await tx.resume.findMany({
-      where: { teamId, userId: bidderId, invoiceId: null, ...BILLABLE },
+      where: { teamId, userId: bidderId, invoiceId: null, ...BILLABLE, ...dateRangeWhere(opts?.from, opts?.to) },
       select: { id: true },
     });
     if (apps.length === 0) throw new NoBillableApplicationsError();
@@ -182,6 +302,7 @@ export async function generateInvoice(teamId: string, bidderId: string, createdB
         applicationCount: apps.length,
         rate,
         amount: apps.length * rate,
+        ...(opts?.to ? { periodEnd: addDaysUTC(startOfDayUTC(opts.to), 1) } : {}),
       },
       select: { id: true },
     });
