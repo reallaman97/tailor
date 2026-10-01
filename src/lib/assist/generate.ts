@@ -1,4 +1,5 @@
 import type OpenAI from "openai";
+import { APIConnectionTimeoutError } from "openai";
 import { z } from "zod";
 import { createDeepSeekClient, toFriendlyDeepSeekError, extractJsonObject, readUsage } from "@/lib/tailoring/deepseek";
 import { compactJobDescription } from "@/lib/job-description";
@@ -7,7 +8,13 @@ import { COVER_LETTER_INSTRUCTIONS, ASK_AI_INSTRUCTIONS, ANSWER_LENGTHS, type An
 // Short, interactive outputs: the fast model with thinking on gives careful
 // answers in seconds rather than the minute a full resume takes.
 export const ASSIST_MODEL = "deepseek-flash";
-const ASSIST_TIMEOUT_MS = 110_000;
+// A normal reply takes 3–10s, but DeepSeek occasionally stalls on a single
+// request for minutes. A fresh request usually comes back in seconds, so cut a
+// stalled attempt short and retry, within an overall deadline the user waits.
+const ATTEMPT_TIMEOUT_MS = 40_000;
+const OVERALL_DEADLINE_MS = 90_000;
+/** Not worth starting another attempt with less time than this left. */
+const MIN_ATTEMPT_MS = 10_000;
 // Short, grounded outputs don't need deep reasoning: A/B-tested on real
 // questions, "low" used ~20% fewer output tokens than the default ("high")
 // with equivalent answers (same facts, lengths, and year counts).
@@ -27,6 +34,12 @@ export type AssistUsage = { model: string; inputTokens: number; cachedInputToken
 export class AssistOutputError extends Error {
   constructor() {
     super("The AI returned an unusable response. Try again.");
+  }
+}
+
+export class AssistTimeoutError extends Error {
+  constructor() {
+    super("DeepSeek is responding slowly right now — try again in a minute.");
   }
 }
 
@@ -67,10 +80,13 @@ const ATTEMPTS = 3;
  * occasionally returning empty (whitespace-only) content — observed several
  * times in a row on the same request. Retries, and makes the last attempt
  * without JSON mode (the prompt still asks for JSON), pulling the object out
- * of the plain reply.
+ * of the plain reply. A stalled attempt is abandoned after ATTEMPT_TIMEOUT_MS
+ * and retried, but never past OVERALL_DEADLINE_MS in total.
  */
 async function callJson<T>(system: string, user: string, schema: z.ZodType<T>): Promise<{ data: T; usage: AssistUsage }> {
-  const client = createDeepSeekClient(ASSIST_TIMEOUT_MS);
+  // Retries are handled here, against the deadline — not by the SDK.
+  const client = createDeepSeekClient(ATTEMPT_TIMEOUT_MS, 0);
+  const deadline = Date.now() + OVERALL_DEADLINE_MS;
   const base = {
     model: ASSIST_MODEL,
     max_tokens: ASSIST_MAX_TOKENS,
@@ -85,13 +101,20 @@ async function callJson<T>(system: string, user: string, schema: z.ZodType<T>): 
   let inputTokens = 0;
   let cachedInputTokens = 0;
   let outputTokens = 0;
+  let timedOut = false;
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    const remaining = deadline - Date.now();
+    if (remaining < MIN_ATTEMPT_MS) break;
     const jsonMode = attempt < ATTEMPTS;
     const params = (jsonMode ? { ...base, response_format: { type: "json_object" } } : base) as OpenAI.ChatCompletionCreateParamsNonStreaming;
     let completion: OpenAI.ChatCompletion;
     try {
-      completion = await client.chat.completions.create(params);
+      completion = await client.chat.completions.create(params, { timeout: Math.min(ATTEMPT_TIMEOUT_MS, remaining) });
     } catch (err) {
+      if (err instanceof APIConnectionTimeoutError) {
+        timedOut = true;
+        continue;
+      }
       throw toFriendlyDeepSeekError(err);
     }
     const usage = readUsage(completion);
@@ -107,7 +130,7 @@ async function callJson<T>(system: string, user: string, schema: z.ZodType<T>): 
       // fall through to one more attempt
     }
   }
-  throw new AssistOutputError();
+  throw timedOut ? new AssistTimeoutError() : new AssistOutputError();
 }
 
 const coverLetterSchema = z.object({ coverLetter: z.string().trim().min(40) });

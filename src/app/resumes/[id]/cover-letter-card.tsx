@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { generateCoverLetterAction } from "./assist-actions";
+import { requestCoverLetter } from "./assist-client";
 import { CopyButton } from "./copy-button";
 import { useElapsedSeconds } from "@/lib/use-elapsed-seconds";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -40,7 +40,7 @@ export function CoverLetterCard({
     setError(null);
     startGenerate(async () => {
       try {
-        const result = await generateCoverLetterAction(resumeId, instructions);
+        const result = await requestCoverLetter(resumeId, instructions);
         if (result.error) return setError(result.error);
         setText(result.coverLetter ?? "");
         setGeneratedAt(result.generatedAt ?? null);

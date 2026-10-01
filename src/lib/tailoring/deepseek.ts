@@ -5,12 +5,15 @@ import { getDeepSeekApiKey } from "@/lib/settings";
 // works unchanged when pointed at its base URL.
 const DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 
-/** A DeepSeek client using the platform key. Throws NoDeepSeekApiKeyError if it isn't configured. */
-export function createDeepSeekClient(timeoutMs: number): OpenAI {
+/**
+ * A DeepSeek client using the platform key. Throws NoDeepSeekApiKeyError if it isn't configured.
+ * `maxRetries` is the SDK's own retry on timeouts/5xx — each retry can wait the full `timeoutMs` again.
+ */
+export function createDeepSeekClient(timeoutMs: number, maxRetries = 1): OpenAI {
   return new OpenAI({
     apiKey: getDeepSeekApiKey(),
     baseURL: DEEPSEEK_BASE_URL,
-    maxRetries: 1,
+    maxRetries,
     timeout: timeoutMs,
   });
 }

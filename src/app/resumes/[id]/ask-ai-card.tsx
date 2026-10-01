@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { askQuestionAction, deleteAnswerAction } from "./assist-actions";
+import { deleteAnswerAction } from "./assist-actions";
+import { requestAnswer } from "./assist-client";
 import { CopyButton } from "./copy-button";
 import type { SavedAnswer } from "@/lib/assist/store";
 import type { AnswerLength } from "@/lib/assist/prompts";
@@ -47,7 +48,7 @@ export function AskAiCard({ resumeId, initialAnswers }: { resumeId: string; init
     if (limitInvalid) return setError("Character limit must be a whole number between 50 and 10,000.");
     startAsk(async () => {
       try {
-        const result = await askQuestionAction(resumeId, { question, length, charLimit: limitNumber });
+        const result = await requestAnswer(resumeId, { question, length, charLimit: limitNumber });
         if (result.error) return setError(result.error);
         if (result.answer) {
           const answer = result.answer;
