@@ -1,6 +1,6 @@
 import type { SVGProps } from "react";
 
-/** The Cute Job Platform mark — also duplicated as static markup in src/app/icon.svg for the browser-tab favicon (that file can't import a component). Keep the two in sync if this ever changes. */
+/** The Visa mark — also duplicated as static markup in src/app/icon.svg for the browser-tab favicon (that file can't import a component). Keep the two in sync if this ever changes. */
 export function Logo(props: SVGProps<SVGSVGElement>) {
   return (
     <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" {...props}>

@@ -20,7 +20,7 @@ export default async function Home() {
       <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border bg-card/80 px-4 backdrop-blur-sm sm:px-6">
         <div className="flex shrink-0 items-center gap-2">
           <Logo className="size-6 rounded-md" />
-          <span className="text-sm font-semibold tracking-tight text-foreground">Cute Job Platform</span>
+          <span className="text-sm font-semibold tracking-tight text-foreground">Visa</span>
         </div>
         <div className="flex-1" />
         <Link
@@ -48,7 +48,7 @@ export default async function Home() {
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-12 sm:px-8">
         <div className="mb-10 flex flex-wrap items-end justify-between gap-4">
           <div className="flex flex-col gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Cute Job Platform</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Visa</h1>
             <p className="text-sm text-muted-foreground">
               Your toolkit for the job hunt — pick a tool to get started.
             </p>

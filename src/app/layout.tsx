@@ -13,10 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Cute Job Platform",
+  title: "Visa",
   description: "Your toolkit for the job hunt — resume tailoring, and more tools on the way.",
-  authors: [{ name: "Alpus Consulting LLC" }],
-  applicationName: "Cute Job Platform",
+  applicationName: "Visa",
 };
 
 // Runs before paint so the correct theme applies with zero flash — a normal

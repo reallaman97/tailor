@@ -68,7 +68,7 @@ export function SidebarShell({
         <div />
         <Link href="/" className="flex items-center gap-2 justify-self-center">
           <Logo className="size-6 rounded-md" />
-          <span className="text-sm font-semibold tracking-tight text-foreground">Cute Job Platform</span>
+          <span className="text-sm font-semibold tracking-tight text-foreground">Visa</span>
         </Link>
         <div className="flex items-center gap-1.5 justify-self-end">
           <TeamSwitcher />

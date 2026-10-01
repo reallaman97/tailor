@@ -1,4 +1,4 @@
-# cute-job-platform
+# Visa
 
 A multi-user job-application platform: superadmins curate candidate **profiles**,
 team members log and track **applications** through a hiring pipeline, and an AI

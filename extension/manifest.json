@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Cute Job Platform — Resume Generator",
+  "name": "Visa — Resume Generator",
   "version": "1.5.0",
-  "description": "Select a job description on any page, right-click, and generate a tailored resume PDF from the Cute Job Platform.",
+  "description": "Select a job description on any page, right-click, and generate a tailored resume PDF from Visa.",
   "permissions": ["contextMenus", "storage", "downloads", "notifications", "scripting"],
   "host_permissions": ["<all_urls>"],
   "icons": {

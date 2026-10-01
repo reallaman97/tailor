@@ -1,6 +1,8 @@
 // Shared helpers for the background service worker, options, and popup.
 
 /** Default platform URL — used until the user overrides it in the options page. */
+// The current live deployment. Update when Visa moves to its own domain;
+// users can also change it in the extension's options.
 export const DEFAULT_API_URL = "https://www.cutejobplatform.space";
 
 /** Reads persisted settings (API URL + selected profile). Auth is a bearer token (see below). */

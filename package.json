@@ -1,8 +1,7 @@
 {
-  "name": "cute-job-platform",
+  "name": "visa",
   "version": "0.1.0",
   "private": true,
-  "author": "Alpus Consulting LLC",
   "scripts": {
     "dev": "next dev --webpack",
     "dev:turbo": "next dev",

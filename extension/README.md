@@ -1,6 +1,6 @@
 # Resume Generator — Chrome extension
 
-A Chrome (MV3) extension for the Cute Job Platform: select a job description on
+A Chrome (MV3) extension for Visa: select a job description on
 any web page, right-click **→ Generate resume**, and a tailored resume PDF is
 built by the platform and **downloaded automatically, named after the candidate
 profile**.

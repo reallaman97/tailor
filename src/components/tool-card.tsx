@@ -14,7 +14,7 @@ type ToolCardProps = {
 };
 
 /**
- * One tile in the Cute Job Platform hub. Every tool is always shown — never
+ * One tile in the Visa hub. Every tool is always shown — never
  * hidden by role — but only "open" tiles are clickable:
  * - open: this role can use it, and it's built.
  * - restricted: it's built, but this role isn't allowed to use it.

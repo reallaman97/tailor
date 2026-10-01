@@ -22,7 +22,7 @@ export function AuthCard({
         </div>
         <div className="mb-8 flex items-center gap-2 text-lg font-semibold tracking-tight text-foreground">
           <Logo className="size-7 rounded-md" />
-          Cute Job Platform
+          Visa
         </div>
         <Card className="w-full max-w-sm">
           <CardHeader>

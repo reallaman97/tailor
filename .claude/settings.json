@@ -15,7 +15,6 @@
       "Bash(netstat -ano)",
       "Bash(taskkill //F //PID 34440)",
       "Bash(node -e ' *)",
-      "Bash(mkdir -p /c/work/cute-job-platform/src/app/api/auth/\\\\[...nextauth\\\\])",
       "Bash(npx tsc *)",
       "Bash(npx eslint *)",
       "Bash(echo \"started pid $!\")",
@@ -42,19 +41,11 @@
       "Bash(cat /tmp/nextdev5.log)",
       "Bash(curl -s -D - -o /tmp/dashboard_with_resume.html -b /tmp/p4cookies.txt http://localhost:3000/dashboard --max-time 15)",
       "Bash(taskkill //F //PID 19820)",
-      "Bash(mkdir -p \"/c/work/cute-job-platform/src/app/resumes/[id]\")",
       "Bash(cat /tmp/nextdev6.log)",
       "Bash(curl -s -D - -o /tmp/dash2.html -b /tmp/p5cookies.txt http://localhost:3000/dashboard --max-time 15)",
-      "Bash(mkdir -p \"/c/work/cute-job-platform/src/app/resumes/[id]/pdf\")",
       "Bash(cat /tmp/nextdev7.log)",
-      "Bash(cp /tmp/downloaded_resume.pdf /c/work/cute-job-platform/downloaded_resume.pdf)",
       "Bash(taskkill //F //PID 43372)",
       "Bash(npm audit *)"
-    ],
-    "additionalDirectories": [
-      "C:\\work\\cute-job-platform\\src\\app\\api\\auth",
-      "C:\\work\\cute-job-platform\\src\\app\\resumes",
-      "C:\\work\\cute-job-platform\\src\\app\\resumes\\[id]"
     ]
   }
 }
