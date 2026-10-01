@@ -199,6 +199,72 @@ export async function setUserTeamAndRole(
   );
 }
 
+// ── New sign-ups (accounts in no team yet) ─────────────
+
+export type UnassignedSignup = {
+  id: string;
+  email: string;
+  username: string;
+  approved: boolean;
+  createdAt: Date;
+};
+
+// Platform-level accounts span every team and are never "unassigned sign-ups".
+const PLATFORM_ROLES: UserRole[] = ["SERVICE_ADMIN", "SUPERADMIN"];
+
+/**
+ * Accounts that belong to no team — self-service sign-ups waiting for a team
+ * admin to approve them and bring them into a team (or reject them). Signing
+ * up doesn't pick a team, so these are visible to every team admin; the first
+ * to claim one adds it to their team.
+ */
+export async function listUnassignedSignups(): Promise<UnassignedSignup[]> {
+  return db.user.findMany({
+    where: { memberships: { none: {} }, role: { notIn: PLATFORM_ROLES } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, email: true, username: true, approved: true, createdAt: true },
+  });
+}
+
+export class SignupNotAvailableError extends Error {
+  constructor() {
+    super("That account is no longer waiting — another admin may have already handled it.");
+  }
+}
+
+/** Throws unless the account still exists and is in no team (so a team admin may claim or reject it). */
+async function assertUnassignedSignup(userId: string): Promise<void> {
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { role: true, _count: { select: { memberships: true } } },
+  });
+  if (!user || PLATFORM_ROLES.includes(user.role) || user._count.memberships > 0) {
+    throw new SignupNotAvailableError();
+  }
+}
+
+/**
+ * Approves a new sign-up and adds it to the caller's team with the given role.
+ * Only accounts still in no team can be claimed, so a team admin can never pull
+ * in another team's member this way.
+ */
+export async function claimSignupForTeam(
+  callerId: string,
+  userId: string,
+  teamId: string,
+  role: UserRole
+): Promise<void> {
+  await assertUnassignedSignup(userId);
+  await setUserTeamAndRole(callerId, userId, teamId, role);
+  await db.user.update({ where: { id: userId }, data: { approved: true } });
+}
+
+/** Rejects a new sign-up by deleting the account — only while it's still in no team. */
+export async function rejectSignup(callerId: string, userId: string): Promise<void> {
+  await assertUnassignedSignup(userId);
+  await deleteUserAsAdmin(callerId, userId);
+}
+
 /**
  * Removes a user from a team (deletes the membership) without deleting the
  * account. Used by a team admin to take someone off their team. If it was the

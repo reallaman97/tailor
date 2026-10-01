@@ -8,6 +8,9 @@ import {
   updateUserApproval,
   adminSetPassword,
   removeUserFromTeam,
+  claimSignupForTeam,
+  rejectSignup,
+  SignupNotAvailableError,
   DuplicateUserError,
   CannotDemoteSelfError,
   CannotUnapproveSelfError,
@@ -92,6 +95,33 @@ export async function resetTeamPasswordAction(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid password" };
   await adminSetPassword(userId, parsed.data.password);
   return { ok: "Password reset." };
+}
+
+/** Approve a new sign-up and add them to this team with the chosen role. */
+export async function addSignupToTeamAction(userId: string, role: string): Promise<{ error?: string }> {
+  const admin = await requireTeamAdmin();
+  if (!admin.activeTeamId) return { error: "No active team." };
+  if (!TEAM_ROLES.includes(role as UserRole)) return { error: "Invalid role." };
+  try {
+    await claimSignupForTeam(admin.userId, userId, admin.activeTeamId, role as UserRole);
+  } catch (err) {
+    if (err instanceof SignupNotAvailableError) return { error: err.message };
+    throw err;
+  }
+  revalidate();
+  return {};
+}
+
+/** Reject a new sign-up — deletes the account. Form action for ConfirmDialog. */
+export async function rejectSignupAction(userId: string): Promise<void> {
+  const admin = await requireTeamAdmin();
+  try {
+    await rejectSignup(admin.userId, userId);
+  } catch (err) {
+    // Already handled by someone else — the refreshed list will show the current state.
+    if (!(err instanceof SignupNotAvailableError)) throw err;
+  }
+  revalidate();
 }
 
 /** Remove a member from the team (keeps their account). Form action for ConfirmDialog. */

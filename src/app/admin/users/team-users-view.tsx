@@ -19,6 +19,8 @@ import {
   setTeamApprovalAction,
   resetTeamPasswordAction,
   removeFromTeamAction,
+  addSignupToTeamAction,
+  rejectSignupAction,
 } from "./team-console-actions";
 
 type Profile = { id: string; fullName: string | null };
@@ -28,12 +30,16 @@ function normalizeRole(role: string): string {
   return ROLE_VALUES.has(role) ? role : "TEAM_ADMIN";
 }
 
+export type SignupRow = { id: string; email: string; username: string; approved: boolean; createdAt: string };
+
 export function TeamUsersView({
   users,
+  signups,
   profiles,
   currentUserId,
 }: {
   users: AdminUserSummary[];
+  signups: SignupRow[];
   profiles: Profile[];
   currentUserId: string;
 }) {
@@ -48,6 +54,7 @@ export function TeamUsersView({
 
   return (
     <div className="flex flex-col gap-6">
+      {signups.length > 0 && <SignupsCard signups={signups} />}
       <CreateUserCard />
 
       <Card>
@@ -99,6 +106,108 @@ export function TeamUsersView({
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/**
+ * Accounts that signed up but aren't in any team yet. Approving adds them to
+ * this team with the chosen role (they then appear under Team members, where a
+ * profile can be assigned); rejecting deletes the account.
+ */
+function SignupsCard({ signups }: { signups: SignupRow[] }) {
+  return (
+    <Card className="border-warning/50">
+      <CardHeader>
+        <div className="flex flex-wrap items-center gap-2">
+          <CardTitle>New sign-ups</CardTitle>
+          <Badge variant="warning">{signups.length} waiting</Badge>
+        </div>
+        <CardDescription>
+          People who signed up and aren&apos;t in a team yet. Approve to add them to this team with a role — they can
+          log in right away — or reject to delete the account.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-left">
+                <th className="p-3 font-medium text-muted-foreground">Account</th>
+                <th className="p-3 font-medium text-muted-foreground">Signed up</th>
+                <th className="p-3 font-medium text-muted-foreground">Role in this team</th>
+                <th className="p-3 text-right font-medium text-muted-foreground">Decision</th>
+              </tr>
+            </thead>
+            <tbody>
+              {signups.map((s) => (
+                <SignupRowView key={s.id} signup={s} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SignupRowView({ signup }: { signup: SignupRow }) {
+  const [role, setRole] = useState("BIDDER");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function approve() {
+    setError(null);
+    startTransition(async () => {
+      const res = await addSignupToTeamAction(signup.id, role);
+      if (res.error) setError(res.error);
+    });
+  }
+
+  return (
+    <tr className="border-b border-border align-middle last:border-0">
+      <td className="p-3">
+        <div className="font-medium text-foreground">{signup.username}</div>
+        <div className="text-xs text-muted-foreground">{signup.email}</div>
+        {error && <div className="mt-1 text-xs text-destructive">{error}</div>}
+      </td>
+      <td className="p-3 text-muted-foreground">
+        {new Date(signup.createdAt).toLocaleDateString()}
+        {signup.approved && <div className="text-xs">Approved, but in no team</div>}
+      </td>
+      <td className="p-3">
+        <Select
+          value={role}
+          disabled={pending}
+          onChange={(e) => setRole(e.target.value)}
+          className="h-8 min-w-[9.5rem] text-sm"
+          aria-label={`Role for ${signup.email}`}
+        >
+          {TEAM_ROLE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </Select>
+      </td>
+      <td className="p-3">
+        <div className="flex items-center justify-end gap-2">
+          <Button size="sm" onClick={approve} loading={pending}>
+            Approve &amp; add to team
+          </Button>
+          <ConfirmDialog
+            title="Reject this sign-up?"
+            description={`This deletes the account for ${signup.email}. They can sign up again later if needed.`}
+            confirmLabel="Reject"
+            triggerVariant="ghost"
+            triggerSize="sm"
+            triggerLabel={`Reject ${signup.email}`}
+            triggerContent="Reject"
+            triggerClassName="text-destructive hover:bg-destructive/10"
+            action={rejectSignupAction.bind(null, signup.id)}
+          />
+        </div>
+      </td>
+    </tr>
   );
 }
 
