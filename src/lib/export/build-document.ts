@@ -108,21 +108,21 @@ export function buildResumeDocument(
   resumeFields: ResumeFields,
   tailoredContent: StoredTailoredContent | null
 ): ResumeDocument {
-  const tailoredBulletsByEntryId = new Map(
-    (tailoredContent?.workHistory ?? []).map((w) => [w.entryId, w.bullets])
-  );
+  const tailoredByEntryId = new Map((tailoredContent?.workHistory ?? []).map((w) => [w.entryId, w]));
 
   const workHistory = [...resumeFields.workHistory]
     .sort(byStartDateDesc)
     .map((entry) => ({
       company: entry.company,
-      jobTitle: entry.jobTitle,
+      // The prompt may realign a role's title toward the target job; company,
+      // dates, and location always stay the profile's own.
+      jobTitle: tailoredByEntryId.get(entry.id)?.jobTitle?.trim() || entry.jobTitle,
       location: entry.location,
       workingStyle: entry.workingStyle,
       workingType: entry.workingType,
       startDate: entry.startDate,
       endDate: entry.endDate,
-      bullets: tailoredBulletsByEntryId.get(entry.id) ?? entry.achievements,
+      bullets: tailoredByEntryId.get(entry.id)?.bullets ?? entry.achievements,
     }));
 
   const education = [...resumeFields.education].sort(byOptionalStartDateDesc);

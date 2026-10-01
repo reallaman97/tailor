@@ -4,64 +4,53 @@ import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getOpenAiApiKey, getSettings } from "@/lib/settings";
+import { compactJobDescription } from "@/lib/job-description";
 import type { Prisma } from "@/generated/prisma/client";
 
 const SETTINGS_ID = "singleton";
 
-// Batch many applications into one LLM call — the whole point of "smallest API
-// calls". Cached verdicts (ApplicationCheck) are never re-sent; only pending or
-// criteria-stale applications are checked, and a single run is capped so cost
-// stays bounded (the UI reports how many remain).
-const BATCH_SIZE = 15;
-const DESCRIPTION_CHARS = 1200;
+// Application Checks answer one question per application: is the posting's
+// tech stack relevant to the team's target stack? Applications are batched
+// into as few LLM calls as possible, verdicts are cached (ApplicationCheck)
+// and only re-checked when the target stack changes, and a single run is
+// capped so cost stays bounded (the UI reports how many remain).
+const BATCH_SIZE = 10;
+// Requirements usually sit mid-posting, so send enough of the (boilerplate-
+// stripped) description to reach them — but not the whole thing.
+const DESCRIPTION_CHARS = 2500;
 const MAX_PER_RUN = 200;
 
-export type WorkStyle = "REMOTE" | "HYBRID" | "ONSITE" | "ANY";
-
-export const WORK_STYLE_OPTIONS: { value: WorkStyle; label: string }[] = [
-  { value: "REMOTE", label: "Fully Remote" },
-  { value: "HYBRID", label: "Hybrid" },
-  { value: "ONSITE", label: "On-site" },
-  { value: "ANY", label: "Any" },
-];
-
 export type CheckCriteria = {
-  country: string; // e.g. "US", or "ANY"
-  workStyle: WorkStyle;
-  jobCategory: string;
+  /** The team's target technologies, comma-separated as entered. */
+  techStack: string;
 };
 
-function normalizeWorkStyle(value: string): WorkStyle {
-  return value === "HYBRID" || value === "ONSITE" || value === "ANY" ? value : "REMOTE";
+/** The target stack as a clean, de-duplicated list (preserving the entered spelling). */
+export function parseTechStack(techStack: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of techStack.split(/[,\n;]/)) {
+    const tech = raw.trim();
+    const key = tech.toLowerCase();
+    if (tech && !seen.has(key)) {
+      seen.add(key);
+      out.push(tech);
+    }
+  }
+  return out;
 }
 
 export async function getCheckCriteria(teamId?: string | null): Promise<CheckCriteria> {
   if (teamId) {
-    const ts = await db.teamSettings.findUnique({
-      where: { teamId },
-      select: { checkCountry: true, checkWorkStyle: true, checkJobCategory: true },
-    });
-    if (ts) {
-      return { country: ts.checkCountry, workStyle: normalizeWorkStyle(ts.checkWorkStyle), jobCategory: ts.checkJobCategory };
-    }
+    const ts = await db.teamSettings.findUnique({ where: { teamId }, select: { checkTechStack: true } });
+    if (ts) return { techStack: ts.checkTechStack };
   }
-  const row = await db.appSettings.findUniqueOrThrow({
-    where: { id: SETTINGS_ID },
-    select: { checkCountry: true, checkWorkStyle: true, checkJobCategory: true },
-  });
-  return {
-    country: row.checkCountry,
-    workStyle: normalizeWorkStyle(row.checkWorkStyle),
-    jobCategory: row.checkJobCategory,
-  };
+  const row = await db.appSettings.findUniqueOrThrow({ where: { id: SETTINGS_ID }, select: { checkTechStack: true } });
+  return { techStack: row.checkTechStack };
 }
 
 export async function updateCheckCriteria(input: CheckCriteria, teamId?: string | null): Promise<void> {
-  const data = {
-    checkCountry: input.country.trim() || "ANY",
-    checkWorkStyle: input.workStyle,
-    checkJobCategory: input.jobCategory.trim(),
-  };
+  const data = { checkTechStack: parseTechStack(input.techStack).join(", ") };
   if (teamId) {
     await db.teamSettings.update({ where: { teamId }, data });
     return;
@@ -69,12 +58,12 @@ export async function updateCheckCriteria(input: CheckCriteria, teamId?: string 
   await db.appSettings.update({ where: { id: SETTINGS_ID }, data });
 }
 
-/** Short stable fingerprint of the criteria — changing any criterion marks existing verdicts stale. */
+/** Stable fingerprint of the target stack (order/case/spacing-insensitive) — changing it marks verdicts stale. */
 export function criteriaHash(c: CheckCriteria): string {
-  return createHash("sha1")
-    .update(JSON.stringify([c.country.trim().toLowerCase(), c.workStyle, c.jobCategory.trim().toLowerCase()]))
-    .digest("hex")
-    .slice(0, 16);
+  const normalized = parseTechStack(c.techStack)
+    .map((t) => t.toLowerCase())
+    .sort();
+  return createHash("sha1").update(JSON.stringify(["stack-v1", normalized])).digest("hex").slice(0, 16);
 }
 
 // --------------------------------------------------------------------------
@@ -85,12 +74,9 @@ const verdictSchema = z.object({
   results: z.array(
     z.object({
       id: z.string(),
-      countryOk: z.boolean(),
-      remoteOk: z.boolean(),
-      categoryOk: z.boolean(),
-      detectedCountry: z.string(),
-      detectedWorkStyle: z.string(),
-      detectedCategory: z.string(),
+      relevant: z.boolean(),
+      matched: z.array(z.string()),
+      primaryStack: z.array(z.string()),
       reason: z.string(),
     })
   ),
@@ -100,41 +86,45 @@ type Verdict = z.infer<typeof verdictSchema>["results"][number];
 
 type AppInput = { id: string; jobTitle: string; companyName: string; jobDescription: string };
 
-function instructionsFor(criteria: CheckCriteria): string {
-  const workStyleLabel = WORK_STYLE_OPTIONS.find((o) => o.value === criteria.workStyle)?.label ?? "Fully Remote";
+function instructionsFor(stack: string[]): string {
   return [
-    "You review job applications and decide whether each one matches the hiring criteria. Judge only from the job posting text.",
-    "For EACH application, evaluate three criteria independently:",
-    `1) COUNTRY — the job must be based in / hiring from: ${criteria.country === "ANY" ? "any country (countryOk is always true)." : criteria.country + ". countryOk=true only if the posting is for that country (US-based, remote-US, etc.)."}`,
-    `2) WORK STYLE — the job must be: ${workStyleLabel}. ${criteria.workStyle === "ANY" ? "remoteOk is always true." : "remoteOk=true only if the posting clearly matches that work style."}`,
-    `3) JOB CATEGORY — the role must fall under: ${criteria.jobCategory} categoryOk=true only if the job title/description is such a role.`,
-    "Also report what you detected: detectedCountry (e.g. \"US\", \"UK\", \"Unknown\"), detectedWorkStyle (\"Remote\"/\"Hybrid\"/\"On-site\"/\"Unknown\"), detectedCategory (a short label like \"Software Engineering\", \"Sales\"), and a one-sentence reason.",
-    "When a criterion is genuinely indeterminable from the text, set that ok to false and say so in the reason. Return one result object per application, echoing its exact id.",
+    `You check whether each job posting's technology stack is relevant to this TARGET STACK: ${stack.join(", ")}.`,
+    "Judge only the technologies the job actually works with — its required and core skills. Ignore location, work style, seniority, salary, and anything else.",
+    "relevant = true when the posting's main stack substantially overlaps the target stack, or uses close equivalents in the same ecosystem (e.g. Next.js for React, PostgreSQL for MySQL, GCP for AWS). relevant = false when its main stack is different and the target technologies appear only as a passing mention or a nice-to-have.",
+    "For each posting return: id (echo it exactly), relevant, matched (the target technologies the posting genuinely requires or uses, max 8), primaryStack (the posting's own main technologies, max 6), reason (at most 15 words).",
   ].join("\n");
 }
 
-async function checkBatch(apps: AppInput[], criteria: CheckCriteria, teamId?: string): Promise<Map<string, Verdict>> {
+async function checkBatch(
+  apps: AppInput[],
+  stack: string[],
+  teamId?: string
+): Promise<Map<string, Verdict>> {
   const [apiKey, settings] = await Promise.all([getOpenAiApiKey(teamId), getSettings(teamId)]);
   const client = new OpenAI({ apiKey, maxRetries: 1, timeout: 60_000 });
 
+  // Short positional ids ("1", "2", …) instead of 25-char database ids — fewer
+  // tokens each way, and nothing for the model to mistype.
   const input = JSON.stringify(
-    apps.map((a) => ({
-      id: a.id,
-      jobTitle: a.jobTitle,
-      company: a.companyName,
-      description: (a.jobDescription ?? "").slice(0, DESCRIPTION_CHARS),
+    apps.map((a, i) => ({
+      id: String(i + 1),
+      title: a.jobTitle,
+      description: compactJobDescription(a.jobDescription ?? "").slice(0, DESCRIPTION_CHARS),
     }))
   );
 
   const response = await client.responses.parse({
     model: settings.openaiModel,
-    instructions: instructionsFor(criteria),
-    input: `APPLICATIONS (JSON array):\n${input}`,
-    text: { format: zodTextFormat(verdictSchema, "application_checks") },
+    instructions: instructionsFor(stack),
+    input: `POSTINGS (JSON array):\n${input}`,
+    text: { format: zodTextFormat(verdictSchema, "stack_checks") },
   });
 
   const map = new Map<string, Verdict>();
-  for (const r of response.output_parsed?.results ?? []) map.set(r.id, r);
+  for (const r of response.output_parsed?.results ?? []) {
+    const app = apps[Number(r.id) - 1];
+    if (app) map.set(app.id, r);
+  }
   return map;
 }
 
@@ -162,6 +152,12 @@ function scopeWhere(filter: ChecksFilter): Prisma.ResumeWhereInput {
   return where;
 }
 
+export class NoTechStackError extends Error {
+  constructor() {
+    super("Set the target tech stack first.");
+  }
+}
+
 export type RunChecksResult = {
   checked: number;
   passed: number;
@@ -171,13 +167,15 @@ export type RunChecksResult = {
 };
 
 /**
- * Checks applications in scope that have no current-criteria verdict yet
+ * Checks applications in scope that have no current-stack verdict yet
  * (missing or stale), batching them into as few LLM calls as possible and
  * caching each verdict. Capped at MAX_PER_RUN per run; `remaining` reports how
  * many still need checking.
  */
 export async function runPendingChecks(filter: ChecksFilter): Promise<RunChecksResult> {
   const criteria = await getCheckCriteria(filter.teamId);
+  const stack = parseTechStack(criteria.techStack);
+  if (stack.length === 0) throw new NoTechStackError();
   const hash = criteriaHash(criteria);
 
   const pendingWhere: Prisma.ResumeWhereInput = {
@@ -200,22 +198,17 @@ export async function runPendingChecks(filter: ChecksFilter): Promise<RunChecksR
 
   for (let i = 0; i < pending.length; i += BATCH_SIZE) {
     const batch = pending.slice(i, i + BATCH_SIZE);
-    const verdicts = await checkBatch(batch, criteria, filter.teamId);
+    const verdicts = await checkBatch(batch, stack, filter.teamId);
     apiCalls++;
 
     for (const app of batch) {
       const v = verdicts.get(app.id);
       if (!v) continue; // model skipped it — leave for the next run
-      const passedNow = v.countryOk && v.remoteOk && v.categoryOk;
       const data = {
-        passed: passedNow,
-        countryOk: v.countryOk,
-        remoteOk: v.remoteOk,
-        categoryOk: v.categoryOk,
-        detectedCountry: v.detectedCountry.slice(0, 120),
-        detectedWorkStyle: v.detectedWorkStyle.slice(0, 60),
-        detectedCategory: v.detectedCategory.slice(0, 120),
-        reason: v.reason.slice(0, 500),
+        passed: v.relevant,
+        matchedTech: v.matched.map((t) => t.slice(0, 60)).slice(0, 8),
+        primaryStack: v.primaryStack.map((t) => t.slice(0, 60)).slice(0, 6),
+        reason: v.reason.slice(0, 300),
         criteriaHash: hash,
       };
       await db.applicationCheck.upsert({
@@ -224,7 +217,7 @@ export async function runPendingChecks(filter: ChecksFilter): Promise<RunChecksR
         update: { ...data, checkedAt: new Date() },
       });
       checked++;
-      if (passedNow) passed++;
+      if (v.relevant) passed++;
       else failed++;
     }
   }
@@ -248,12 +241,8 @@ export type CheckedApplication = {
   jobTitle: string;
   jobLink: string | null;
   status: CheckStatus;
-  countryOk: boolean | null;
-  remoteOk: boolean | null;
-  categoryOk: boolean | null;
-  detectedCountry: string | null;
-  detectedWorkStyle: string | null;
-  detectedCategory: string | null;
+  matchedTech: string[];
+  primaryStack: string[];
   reason: string | null;
 };
 
@@ -291,19 +280,7 @@ export async function listApplicationChecks(filter: ChecksFilter): Promise<Check
       jobLink: true,
       userId: true,
       user: { select: { username: true, email: true } },
-      check: {
-        select: {
-          passed: true,
-          countryOk: true,
-          remoteOk: true,
-          categoryOk: true,
-          detectedCountry: true,
-          detectedWorkStyle: true,
-          detectedCategory: true,
-          reason: true,
-          criteriaHash: true,
-        },
-      },
+      check: { select: { passed: true, matchedTech: true, primaryStack: true, reason: true, criteriaHash: true } },
     },
   });
 
@@ -312,6 +289,7 @@ export async function listApplicationChecks(filter: ChecksFilter): Promise<Check
     if (!r.check) status = "UNCHECKED";
     else if (r.check.criteriaHash !== hash) status = "STALE";
     else status = r.check.passed ? "PASS" : "FAIL";
+    const current = status === "PASS" || status === "FAIL";
 
     return {
       id: r.id,
@@ -323,13 +301,10 @@ export async function listApplicationChecks(filter: ChecksFilter): Promise<Check
       jobTitle: r.jobTitle,
       jobLink: r.jobLink,
       status,
-      countryOk: r.check?.countryOk ?? null,
-      remoteOk: r.check?.remoteOk ?? null,
-      categoryOk: r.check?.categoryOk ?? null,
-      detectedCountry: r.check?.detectedCountry ?? null,
-      detectedWorkStyle: r.check?.detectedWorkStyle ?? null,
-      detectedCategory: r.check?.detectedCategory ?? null,
-      reason: r.check?.reason ?? null,
+      // A stale verdict was against a different stack — don't show its details as current.
+      matchedTech: current ? (r.check?.matchedTech ?? []) : [],
+      primaryStack: current ? (r.check?.primaryStack ?? []) : [],
+      reason: current ? (r.check?.reason ?? null) : null,
     };
   });
 

@@ -1,6 +1,7 @@
 "use server";
 
 import { db } from "@/lib/db";
+import { withDbRetry } from "@/lib/db-retry";
 import { hashPassword } from "@/lib/auth/password";
 import { hashResetToken } from "@/lib/auth/reset-tokens";
 import { resetPasswordSchema } from "@/lib/auth/schemas";
@@ -36,21 +37,26 @@ export async function resetPasswordAction(
 
   const passwordHash = await hashPassword(password);
 
-  await db.$transaction([
-    db.user.update({
-      where: { id: resetToken.userId },
-      data: { passwordHash },
-    }),
-    db.passwordResetToken.update({
-      where: { id: resetToken.id },
-      data: { usedAt: new Date() },
-    }),
-    // Invalidate any other outstanding reset tokens for this user.
-    db.passwordResetToken.updateMany({
-      where: { userId: resetToken.userId, usedAt: null, id: { not: resetToken.id } },
-      data: { usedAt: new Date() },
-    }),
-  ]);
+  // Every write sets a value, so repeating the batch after a transient failure is harmless.
+  await withDbRetry(
+    () =>
+      db.$transaction([
+        db.user.update({
+          where: { id: resetToken.userId },
+          data: { passwordHash },
+        }),
+        db.passwordResetToken.update({
+          where: { id: resetToken.id },
+          data: { usedAt: new Date() },
+        }),
+        // Invalidate any other outstanding reset tokens for this user.
+        db.passwordResetToken.updateMany({
+          where: { userId: resetToken.userId, usedAt: null, id: { not: resetToken.id } },
+          data: { usedAt: new Date() },
+        }),
+      ]),
+    { idempotent: true }
+  );
 
   return { success: true };
 }

@@ -5,10 +5,11 @@ import { z } from "zod";
 import OpenAI, { AuthenticationError, APIError } from "openai";
 import { requireTeamAdmin } from "@/lib/auth/team-context";
 import { updateTeamSettings, getOpenAiApiKey, NoOpenAiApiKeyError } from "@/lib/settings";
+import { isResumeModel, type ResumeModelId } from "@/lib/tailoring/models";
 
 const settingsSchema = z.object({
   openaiModel: z.string().trim().min(1, "Model is required"),
-  tailoringPrompt: z.string().trim().min(1, "Prompt is required"),
+  resumeModel: z.string().refine(isResumeModel, "Choose a DeepSeek model"),
   resumeTemplate: z.enum(["MODERN", "CLASSIC"]),
   openaiApiKey: z.string().optional(),
   clearOpenaiApiKey: z.string().optional(),
@@ -28,11 +29,11 @@ export async function updateSettingsAction(
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   }
 
-  const { openaiModel, tailoringPrompt, resumeTemplate, openaiApiKey, clearOpenaiApiKey } = parsed.data;
+  const { openaiModel, resumeModel, resumeTemplate, openaiApiKey, clearOpenaiApiKey } = parsed.data;
 
   await updateTeamSettings(ctx.activeTeamId, {
     openaiModel,
-    tailoringPrompt,
+    resumeModel: resumeModel as ResumeModelId,
     resumeTemplate,
     openaiApiKey:
       clearOpenaiApiKey === "true" ? null : openaiApiKey && openaiApiKey.trim() !== "" ? openaiApiKey.trim() : undefined,

@@ -7,39 +7,75 @@ import { getProfileDek } from "@/lib/profile/dek";
 import { encryptJson } from "@/lib/profile/crypto";
 import { createResume } from "@/lib/resumes/resumes";
 import { ResumeNotFoundError } from "@/lib/resumes/resumes";
-import { tailorResume, getTailoredContent, sanitizeTailoredContent, ProfileIncompleteError } from "./tailor-resume";
+import {
+  tailorResume,
+  getTailoredContent,
+  sanitizeTailoredContent,
+  ProfileIncompleteError,
+  NO_BASE_RESUME_MESSAGE,
+} from "./tailor-resume";
+import { createWorkHistoryEntry } from "@/lib/profile/work-history";
+import type { ModelOutput } from "./schema";
+
+const EMPTY_REPORT: ModelOutput["validationReport"] = {
+  atsMatchScore: 0,
+  aiProbability: 0,
+  researchContributionCheck: "",
+  evidencePlacementCheck: "",
+  titleRealismCheck: "",
+  gapsAndRisks: [],
+};
+
+/** A model answer with everything empty except what a test overrides. */
+function modelOutput(
+  resume: Partial<ModelOutput["resume"]> = {},
+  validationReport: Partial<ModelOutput["validationReport"]> = {}
+): ModelOutput {
+  return {
+    resume: { headline: "h", summary: "s", experience: [], skills: [], certifications: [], ...resume },
+    validationReport: { ...EMPTY_REPORT, ...validationReport },
+  };
+}
 
 describe("sanitizeTailoredContent (pure)", () => {
-  it("drops work history entries with an entryId the candidate doesn't have", () => {
+  it("drops work history entries with an entryId the candidate doesn't have (or repeats)", () => {
     const result = sanitizeTailoredContent(
-      {
-        headline: "h",
-        summary: "A summary",
-        workHistory: [
-          { entryId: "real-1", bullets: ["kept"] },
-          { entryId: "hallucinated-id", bullets: ["dropped"] },
+      modelOutput({
+        experience: [
+          { entryId: "real-1", jobTitle: "Integration Engineer", bullets: ["kept"] },
+          { entryId: "hallucinated-id", jobTitle: "CTO", bullets: ["dropped"] },
+          { entryId: "real-1", jobTitle: "Duplicate", bullets: ["dropped"] },
         ],
-        skillCategories: [],
-        orderedCertifications: [],
-      },
+      }),
       new Set(["real-1"]),
       []
     );
-    expect(result.workHistory).toEqual([{ entryId: "real-1", bullets: ["kept"] }]);
+    expect(result.workHistory).toEqual([{ entryId: "real-1", jobTitle: "Integration Engineer", bullets: ["kept"] }]);
   });
 
-  it("keeps the model's skill categories (ATS expansion allowed) but trims, dedupes, and drops empties", () => {
+  it("trims realigned titles and caps absurdly long ones", () => {
     const result = sanitizeTailoredContent(
-      {
-        headline: "h",
-        summary: "s",
-        workHistory: [],
-        skillCategories: [
+      modelOutput({
+        experience: [
+          { entryId: "a", jobTitle: "  Senior Implementation Engineer  ", bullets: [] },
+          { entryId: "b", jobTitle: "X".repeat(500), bullets: [] },
+        ],
+      }),
+      new Set(["a", "b"]),
+      []
+    );
+    expect(result.workHistory[0].jobTitle).toBe("Senior Implementation Engineer");
+    expect(result.workHistory[1].jobTitle.length).toBe(100);
+  });
+
+  it("keeps the model's skill categories but trims, dedupes, and drops empties", () => {
+    const result = sanitizeTailoredContent(
+      modelOutput({
+        skills: [
           { category: "Languages", skills: ["TypeScript", " TypeScript ", "Python", ""] },
           { category: "Empty", skills: ["   "] },
         ],
-        orderedCertifications: [],
-      },
+      }),
       new Set(),
       []
     );
@@ -48,17 +84,22 @@ describe("sanitizeTailoredContent (pure)", () => {
 
   it("keeps only real certifications, case-insensitively, preserving real casing and model order", () => {
     const result = sanitizeTailoredContent(
-      {
-        headline: "h",
-        summary: "s",
-        workHistory: [],
-        skillCategories: [],
-        orderedCertifications: ["aws certified solutions architect", "Fabricated Cert", "CKA"],
-      },
+      modelOutput({ certifications: ["aws certified solutions architect", "Fabricated Cert", "CKA"] }),
       new Set(),
       ["CKA", "AWS Certified Solutions Architect"]
     );
     expect(result.orderedCertifications).toEqual(["AWS Certified Solutions Architect", "CKA"]);
+  });
+
+  it("clamps report scores to whole percentages and drops blank notes", () => {
+    const result = sanitizeTailoredContent(
+      modelOutput({}, { atsMatchScore: 92.6, aiProbability: -5, gapsAndRisks: [" Salesforce gap ", "", "  "] }),
+      new Set(),
+      []
+    );
+    expect(result.validationReport.atsMatchScore).toBe(93);
+    expect(result.validationReport.aiProbability).toBe(0);
+    expect(result.validationReport.gapsAndRisks).toEqual(["Salesforce gap"]);
   });
 });
 
@@ -86,6 +127,35 @@ describe("tailorResume error paths (integration, no live LLM call)", () => {
     });
 
     await expect(tailorResume(userId, resumeId)).rejects.toThrow(ProfileIncompleteError);
+  });
+
+  it("refuses to generate (before any LLM call) when the profile has no base resume", async () => {
+    const profileId = await createProfile(MINIMAL_PERSONAL_INFO);
+    const { id: bidderId } = await createTestUser();
+    try {
+      await assignProfileToUser(profileId, bidderId);
+      await createWorkHistoryEntry(profileId, {
+        company: "Acme",
+        jobTitle: "Engineer",
+        location: undefined,
+        workingStyle: undefined,
+        workingType: undefined,
+        startDate: "2020-01",
+        endDate: undefined,
+        achievements: ["Built things."],
+      });
+      const resumeId = await createResume(bidderId, {
+        jobLink: undefined,
+        companyName: "Target Co",
+        jobTitle: "Engineer",
+        jobDescription: "A description that is definitely long enough to pass validation.",
+      });
+
+      await expect(tailorResume(bidderId, resumeId)).rejects.toThrow(NO_BASE_RESUME_MESSAGE);
+    } finally {
+      await deleteTestUser(bidderId);
+      await db.profile.delete({ where: { id: profileId } });
+    }
   });
 });
 

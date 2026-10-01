@@ -2,11 +2,12 @@ import Link from "next/link";
 import { requireTeamAdmin } from "@/lib/auth/team-context";
 import { listAllProfiles } from "@/lib/admin/profiles";
 import { deleteProfileAction } from "./actions";
-import { AccountShell } from "@/components/account-shell";
+import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/page-header";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { buttonVariants } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Badge } from "@/components/ui/badge";
 import { TrashIcon, PlusIcon } from "@/components/icons";
 
 export default async function AdminProfilesPage() {
@@ -14,11 +15,11 @@ export default async function AdminProfilesPage() {
   const profiles = await listAllProfiles(ctx.activeTeamId ?? undefined);
 
   return (
-    <AccountShell isSuperAdmin wide>
+    <AppShell userEmail={ctx.email} isSuperAdmin wide>
       <div className="flex flex-col gap-6">
         <PageHeader
           title="Profiles"
-          description="Create and manage the pool of candidate profiles. Open a profile to assign it to one or more accounts."
+          description="Candidate profiles, each built from a full base resume. Open one to assign it to accounts or fine-tune it."
           action={
             <Link href="/admin/profiles/new" className={buttonVariants("primary", "sm")}>
               <PlusIcon className="size-4" />
@@ -32,6 +33,7 @@ export default async function AdminProfilesPage() {
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Assigned accounts</TableHead>
+              <TableHead>Base resume</TableHead>
               <TableHead>Created</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -46,6 +48,15 @@ export default async function AdminProfilesPage() {
                   {p.assignedUsers.length === 0
                     ? "Unassigned"
                     : p.assignedUsers.map((u) => u.email).join(", ")}
+                </TableCell>
+                <TableCell>
+                  {p.baseResumeImportedAt ? (
+                    <Badge variant="success">Imported {p.baseResumeImportedAt.toLocaleDateString()}</Badge>
+                  ) : (
+                    <Link href={`/admin/profiles/${p.id}`}>
+                      <Badge variant="warning">Missing — upload</Badge>
+                    </Link>
+                  )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">{p.createdAt.toLocaleDateString()}</TableCell>
                 <TableCell className="text-right">
@@ -69,7 +80,7 @@ export default async function AdminProfilesPage() {
             ))}
             {profiles.length === 0 && (
               <TableRow>
-                <TableCell colSpan={4} className="text-center text-muted-foreground">
+                <TableCell colSpan={5} className="text-center text-muted-foreground">
                   No profiles yet.
                 </TableCell>
               </TableRow>
@@ -77,6 +88,6 @@ export default async function AdminProfilesPage() {
           </TableBody>
         </Table>
       </div>
-    </AccountShell>
+    </AppShell>
   );
 }

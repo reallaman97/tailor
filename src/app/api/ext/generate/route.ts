@@ -5,7 +5,14 @@ import { db } from "@/lib/db";
 import { getExtUser } from "@/lib/ext/session";
 import { getAssignedProfileId } from "@/lib/profile/shared";
 import { getProfileNames } from "@/lib/profile/personal-info";
-import { createResume, DuplicateApplicationError, uploadScreenshot } from "@/lib/resumes/resumes";
+import {
+  createResume,
+  DuplicateApplicationError,
+  uploadScreenshot,
+  findDuplicateApplication,
+  duplicateScope,
+  duplicateMessage,
+} from "@/lib/resumes/resumes";
 import { extractJobPosting } from "@/lib/resumes/extract-job-posting";
 import { tailorResume, decryptTailoredContent, ProfileIncompleteError } from "@/lib/tailoring/tailor-resume";
 import { getResumeFieldsForResume } from "@/lib/profile/resume-fields";
@@ -16,9 +23,9 @@ import { getProfileTemplate } from "@/lib/profile/template";
 import { getSettings } from "@/lib/settings";
 import type { RoleTrack } from "@/generated/prisma/client";
 
-// The OpenAI tailoring call runs inline; give the route headroom (see the web
-// generation route). Raise to 300 on Vercel Pro if generations run long.
-export const maxDuration = 60;
+// The DeepSeek generation call runs inline; give the route the same headroom as
+// the web builder (see src/app/resumes/new/page.tsx).
+export const maxDuration = 300;
 
 const bodySchema = z.object({
   profileId: z.string().optional(),
@@ -96,6 +103,26 @@ export async function POST(request: Request) {
   });
   const teamId = ownerTeam?.teamId ?? null;
 
+  // Record the job posting URL like the web form does — prefer an explicit
+  // jobLink, else the page the description was selected from. It's also a
+  // duplicate-detection key (normalized server-side).
+  const pageUrlAsLink = body.pageUrl && /^https?:\/\//i.test(body.pageUrl) ? body.pageUrl : undefined;
+
+  // Duplicate check BEFORE any AI call — extraction below costs tokens, and so
+  // does tailoring. The company may still be unknown here; createResume
+  // re-checks with it once extracted.
+  const early = await findDuplicateApplication(duplicateScope(ownerUserId, await getAssignedProfileId(ownerUserId)), {
+    companyName: body.companyName,
+    jobLink: body.jobLink || pageUrlAsLink,
+    jobDescription: body.jobDescription,
+  });
+  if (early) {
+    return NextResponse.json(
+      { error: duplicateMessage(early.existing, early.reason), duplicate: true, existing: early.existing },
+      { status: 409 }
+    );
+  }
+
   // Derive company / title (and role track) from the description + page hints
   // when the extension didn't supply them (the one-click flow).
   let companyName = body.companyName?.trim();
@@ -111,11 +138,6 @@ export async function POST(request: Request) {
     jobTitle = jobTitle || extracted.jobTitle;
     roleTrack = extracted.roleTrack;
   }
-
-  // Record the job posting URL like the web form does — prefer an explicit
-  // jobLink, else the page the description was selected from. It's also a
-  // duplicate-detection key (normalized server-side).
-  const pageUrlAsLink = body.pageUrl && /^https?:\/\//i.test(body.pageUrl) ? body.pageUrl : undefined;
 
   // Create the tracked application (same as the web "Build resume").
   let resumeId: string;

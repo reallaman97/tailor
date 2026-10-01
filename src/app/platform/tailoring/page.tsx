@@ -1,6 +1,7 @@
 import { requireServiceAdmin } from "@/lib/auth/team-context";
 import { getSettings } from "@/lib/settings";
 import { SAMPLE_CANDIDATE } from "@/lib/tailoring/debug";
+import { getResumePromptFingerprint } from "@/lib/tailoring/resume-prompt";
 import { PlatformShell } from "@/components/platform-shell";
 import { PageHeader } from "@/components/page-header";
 import { TailoringDebugView } from "./tailoring-view";
@@ -26,12 +27,13 @@ export default async function TailoringDebugPage() {
       <div className="flex flex-col gap-6">
         <PageHeader
           title="Resume tailoring debug"
-          description="Test a tailoring prompt and model against OpenAI and inspect the full response. Save the prompt + model to the active team when you're happy with it."
+          description="Run the real resume generation (managed prompt on DeepSeek) against a sample candidate and inspect the full response. Save the model to the active team when you're happy with it."
         />
         <TailoringDebugView
           teamName={teamName}
-          defaultModel={settings.openaiModel}
-          defaultPrompt={settings.tailoringPrompt}
+          defaultModel={settings.resumeModel}
+          promptFingerprint={getResumePromptFingerprint()}
+          deepSeekKeyConfigured={Boolean(process.env.DEEPSEEK_API_KEY?.trim())}
           sampleCandidateJson={JSON.stringify(SAMPLE_CANDIDATE, null, 2)}
           sampleJobDescription={SAMPLE_JOB_DESCRIPTION}
         />

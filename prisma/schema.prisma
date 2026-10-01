@@ -129,6 +129,15 @@ model Profile {
   // default (AppSettings.resumeTemplate). Plaintext, low sensitivity.
   resumeTemplate String?
 
+  // The candidate's full base resume — the required foundation for generation.
+  // Importing it (src/lib/base-resume) parses it verbatim into this profile's
+  // summary / work history / education / certifications / skills; the raw text
+  // is kept (encrypted with the profile DEK) for reference and re-parsing.
+  // baseResumeImportedAt null = no base resume yet → generation is blocked.
+  baseResumeTextEnc    String?   @db.Text
+  baseResumeFileName   String?
+  baseResumeImportedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -293,6 +302,12 @@ model Resume {
   jobTitle       String
   jobDescription String @db.Text // plaintext — third-party posting text, not user PII
 
+  // Duplicate-detection keys (src/lib/resumes/duplicates.ts), checked before any
+  // AI call. Null for rows created before they existed until setup backfills.
+  companyKey    String? // normalized company name; null for generic names ("Confidential")
+  jobKey        String? // canonical posting id from the URL (e.g. "linkedin:3912345678")
+  jdFingerprint String? // hash of the normalized job-description text
+
   // An application can hold several simultaneous pipeline stages at once
   // (e.g. Applied+Reply+Tech1) — each status change adds to this history
   // rather than replacing it, so the array reflects every stage reached so
@@ -316,6 +331,13 @@ model Resume {
   modelUsed          String? // e.g. "gpt-4.1-mini" — for auditing/versioning
   promptVersion      String? // tags which prompt template produced this
 
+  // Cover letter written to match the tailored resume (src/lib/assist).
+  // Encrypted with the profile DEK, like tailoredContentEnc.
+  coverLetterEnc         String?   @db.Text
+  coverLetterGeneratedAt DateTime?
+  // "Ask AI" answers to the application form's own questions.
+  answers                ApplicationAnswer[]
+
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   generatedAt DateTime? // when AI tailoring last ran
@@ -333,14 +355,17 @@ model Resume {
   teamId String?
   team   Team?  @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
-  // Payments: the invoice that billed this application. Null = not yet invoiced
-  // ("unpaid"). SetNull so cancelling/deleting an invoice releases its apps.
+  // DEPRECATED — the payments/invoicing feature was removed; nothing reads or
+  // writes this any more. Kept only so existing invoice data isn't dropped.
   invoiceId String?
   invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([profileId])
   @@index([userId, roleTrack])
+  @@index([profileId, companyKey])
+  @@index([profileId, jobKey])
+  @@index([profileId, jdFingerprint])
   @@index([userId, source])
   @@index([approvalStatus])
   @@index([teamId])
@@ -349,6 +374,32 @@ model Resume {
 
 // ── LLM usage tracking (cost visibility + rate limiting) ──
 
+// One "Ask AI" question from a job application form and the answer drafted
+// for it, grounded in the application's tailored resume + job description.
+// Question and answer are encrypted with the profile DEK (they describe the
+// candidate). Deleted with the application.
+model ApplicationAnswer {
+  id       String @id @default(cuid())
+  resumeId String
+  resume   Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  questionEnc String @db.Text
+  answerEnc   String @db.Text
+  // "brief" | "standard" | "detailed" — the length asked for.
+  length      String
+  charLimit   Int?
+  // The answer contains a [placeholder] for a fact the resume doesn't establish
+  // (salary, work authorization, notice period…) — the applicant must fill it in.
+  needsReview Boolean @default(false)
+  // Why it needs review, e.g. "Add your expected salary range".
+  reviewNote  String?
+  createdById String?
+
+  createdAt DateTime @default(now())
+
+  @@index([resumeId, createdAt])
+}
+
 model UsageEvent {
   id     String  @id @default(cuid())
   userId String
@@ -356,9 +407,12 @@ model UsageEvent {
   resumeId String?
   resume   Resume? @relation(fields: [resumeId], references: [id], onDelete: SetNull)
 
-  kind               String // "tailoring"
+  kind               String // "tailoring" | "resume-import" | "cover-letter" | "ask-ai"
   model              String
   inputTokens        Int
+  // Of inputTokens, those served from the provider's prompt cache (billed at a
+  // small fraction of the input price).
+  cachedInputTokens  Int @default(0)
   outputTokens       Int
   estimatedCostMicros Int // millionths of a dollar — a single call often costs a fraction of a cent
 
@@ -387,9 +441,13 @@ model AppSettings {
   // decrypted form; only src/lib/settings.ts's getOpenAiApiKey() reads it,
   // for the server-side OpenAI call itself.
   openaiApiKeyEnc String?
-  // Null = use the built-in default prompt (DEFAULT_TAILORING_PROMPT in
-  // src/lib/settings.ts) — avoids duplicating that long text into a migration.
+  // Legacy, no longer read: resume generation now uses the secret prompt from
+  // the RESUME_PROMPT_B64 env var (src/lib/tailoring/resume-prompt.ts), which
+  // is never stored in the DB or editable from the web portal.
   tailoringPrompt String? @db.Text
+  // DeepSeek model for resume generation (see src/lib/tailoring/models.ts).
+  // openaiModel above still drives the smaller OpenAI features.
+  resumeModel     String         @default("deepseek-v4-pro")
   resumeTemplate  ResumeTemplate @default(MODERN)
 
   // Interview Management: IANA timezone (e.g. "America/New_York") used to render
@@ -398,6 +456,11 @@ model AppSettings {
 
   // Application-checking criteria — what makes an application "right". Editable
   // by a superadmin; these defaults are the required baseline.
+  // Application Checks criterion: the team's target tech stack, comma-separated
+  // (e.g. "Python, React, AWS"). Each application is judged only on whether its
+  // stack is relevant to this. See src/lib/checks/application-checks.ts.
+  checkTechStack   String @default("") @db.Text
+  // DEPRECATED — the old country / work-style / category criteria; unused.
   checkCountry     String @default("US") // target country (ISO-ish name/code), or "ANY"
   checkWorkStyle   String @default("REMOTE") // REMOTE | HYBRID | ONSITE | ANY
   checkJobCategory String @default("Computer Science / software roles: software engineering, AI/ML, DevOps, data engineering, security, IT, cloud, and closely related technical fields.") @db.Text
@@ -417,10 +480,16 @@ model ApplicationCheck {
   resumeId String @unique
   resume   Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
 
-  passed     Boolean
-  countryOk  Boolean
-  remoteOk   Boolean
-  categoryOk Boolean
+  // True = the posting's tech stack is relevant to the team's target stack.
+  passed      Boolean
+  // Target technologies the posting actually requires/uses.
+  matchedTech  String[] @default([])
+  // The posting's own main technologies, as the checker read them.
+  primaryStack String[] @default([])
+  // DEPRECATED — verdicts from the old country/work-style/category checks.
+  countryOk  Boolean @default(true)
+  remoteOk   Boolean @default(true)
+  categoryOk Boolean @default(true)
 
   detectedCountry   String?
   detectedWorkStyle String?
@@ -761,8 +830,8 @@ model TeamMembership {
   role             UserRole @default(BIDDER) // team-scoped role (TEAM_ADMIN/MANAGER/CALLER/BIDDER)
   assignedProfileId String?
 
-  // What this bidder earns per APPROVED application in this team (USD). Set by
-  // team admins/managers; drives the bidder dashboard's earnings. Default $0.08.
+  // DEPRECATED — bidder rates/earnings were removed; unused. Kept only so
+  // existing data isn't dropped.
   applicationRate  Float    @default(0.08)
 
   createdAt DateTime @default(now())
@@ -781,12 +850,14 @@ model TeamSettings {
 
   openaiModel     String         @default("gpt-4.1-mini")
   openaiApiKeyEnc String?
-  tailoringPrompt String?        @db.Text
+  tailoringPrompt String?        @db.Text // legacy, no longer read (see AppSettings)
+  resumeModel     String         @default("deepseek-v4-pro")
   resumeTemplate  ResumeTemplate @default(MODERN)
 
   interviewTimezone String @default("UTC")
 
-  checkCountry     String @default("US")
+  checkTechStack   String @default("") @db.Text // see AppSettings.checkTechStack
+  checkCountry     String @default("US") // DEPRECATED — unused
   checkWorkStyle   String @default("REMOTE")
   checkJobCategory String @default("Computer Science / software roles: software engineering, AI/ML, DevOps, data engineering, security, IT, cloud, and closely related technical fields.") @db.Text
 
@@ -794,7 +865,10 @@ model TeamSettings {
   updatedAt DateTime @updatedAt
 }
 
-// ── Payments / invoicing ──────────────────────────────────────────────
+// ── Payments / invoicing — DEPRECATED ─────────────────────────────────
+// The invoicing feature was removed from the app. Invoice / InvoiceStatus stay
+// in the schema only so existing rows aren't dropped by `prisma db push`; no
+// code reads or writes them. Safe to drop once that data is no longer needed.
 // A bill for a bidder covering their unpaid "billable" applications (those
 // with a proof screenshot that aren't rejected). Generating an invoice locks
 // those applications to it (Resume.invoiceId), so the next invoice only picks

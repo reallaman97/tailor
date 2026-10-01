@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { withDbRetry } from "@/lib/db-retry";
 
 /**
  * Caller weekly availability — a recurring Sun–Sat × 24h grid. Each stored row
@@ -52,12 +53,17 @@ export async function saveMyAvailability(userId: string, slots: AvailabilitySlot
     clean.push({ dayOfWeek: s.dayOfWeek, hour: s.hour });
   }
 
-  await db.$transaction([
-    db.callerAvailability.deleteMany({ where: { userId } }),
-    db.callerAvailability.createMany({
-      data: clean.map((s) => ({ userId, dayOfWeek: s.dayOfWeek, hour: s.hour })),
-    }),
-  ]);
+  // Replace-all, so repeating it after a transient failure lands on the same slots.
+  await withDbRetry(
+    () =>
+      db.$transaction([
+        db.callerAvailability.deleteMany({ where: { userId } }),
+        db.callerAvailability.createMany({
+          data: clean.map((s) => ({ userId, dayOfWeek: s.dayOfWeek, hour: s.hour })),
+        }),
+      ]),
+    { idempotent: true }
+  );
 }
 
 export type CallerAvailabilityView = {

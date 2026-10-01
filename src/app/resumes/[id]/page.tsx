@@ -6,6 +6,8 @@ import { getResume, type ResumeDetail } from "@/lib/resumes/resumes";
 import { getApplicationDetail, type AdminApplicationDetail } from "@/lib/admin/applications";
 import { getResumeFieldsForResume } from "@/lib/profile/resume-fields";
 import { decryptTailoredContent } from "@/lib/tailoring/tailor-resume";
+import { ValidationReportPanel } from "@/components/validation-report";
+import { getAssistData } from "@/lib/assist/store";
 import { DetailsForm } from "./details-form";
 import { ScheduleControls } from "./schedule-controls";
 import { ApprovalSelect } from "../approval-select";
@@ -82,9 +84,11 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
   // content — which is keyed to the same profileId — even after a reassignment.
   // tailoredContentEnc was already loaded above, so decrypt it in place rather
   // than re-fetching the same resume row.
-  const [resumeFields, tailoredContent] = await Promise.all([
+  const [resumeFields, tailoredContent, assist] = await Promise.all([
     getResumeFieldsForResume(ownerUserId, resume.profileId),
     decryptTailoredContent(resume.profileId, resume.tailoredContentEnc),
+    // Cover letter + saved answers; only meaningful once a tailored resume exists.
+    resume.tailoredContentEnc ? getAssistData(resume.id, resume.profileId) : null,
   ]);
 
   const workHistoryById = new Map((resumeFields?.workHistory ?? []).map((w) => [w.id, w]));
@@ -184,6 +188,15 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
                 </p>
               </CardHeader>
               <CardContent className="flex flex-col gap-6">
+                {tailoredContent.headline && (
+                  <div>
+                    <h3 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                      Headline
+                    </h3>
+                    <p className="text-sm font-medium text-foreground">{tailoredContent.headline}</p>
+                  </div>
+                )}
+
                 <div>
                   <h3 className="mb-1.5 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                     Summary
@@ -197,11 +210,20 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
                   </h3>
                   {tailoredContent.workHistory.map((entry) => {
                     const source = workHistoryById.get(entry.entryId);
+                    // The title shown (and printed in the PDF) is the realigned one when the
+                    // prompt changed it; only admins see what it was changed from.
+                    const title = entry.jobTitle?.trim() || source?.jobTitle;
+                    const retitled = isSuperAdmin && source && title !== source.jobTitle;
                     return (
                       <div key={entry.entryId} className="flex flex-col gap-1.5">
-                        <p className="text-sm font-medium text-foreground">
-                          {source ? `${source.jobTitle} — ${source.company}` : "Unknown entry"}
-                        </p>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">
+                            {source ? `${title} — ${source.company}` : "Unknown entry"}
+                          </p>
+                          {retitled && (
+                            <p className="text-xs text-muted-foreground">Title realigned · was: {source.jobTitle}</p>
+                          )}
+                        </div>
                         <ul className="list-inside list-disc text-sm text-muted-foreground">
                           {entry.bullets.map((bullet, i) => (
                             <li key={i}>{bullet}</li>
@@ -228,6 +250,42 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
                     <p className="text-sm text-foreground">{(tailoredContent.orderedSkills ?? []).join(", ")}</p>
                   )}
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Admin-only: the model's self-check. Never rendered for bidders (this is a
+              server component, so the report isn't sent to their browser at all). */}
+          {isSuperAdmin && tailoredContent?.validationReport && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Validation report</CardTitle>
+                <CardDescription>
+                  The AI&apos;s own estimate of ATS match and AI-detection risk, plus gaps to prepare for in
+                  interviews. Visible to admins only.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ValidationReportPanel report={tailoredContent.validationReport} />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Cover letter, form answers and proof live in the Resume Builder's
+              workstation for this application — one place to finish applying. */}
+          {tailoredContent && (
+            <Card>
+              <CardContent className="flex flex-wrap items-center justify-between gap-3 pt-6">
+                <div className="text-sm">
+                  <p className="font-medium text-foreground">Cover letter &amp; application questions</p>
+                  <p className="text-muted-foreground">
+                    {assist?.coverLetter ? "Cover letter written" : "No cover letter yet"} ·{" "}
+                    {assist?.answers.length ?? 0} question{assist?.answers.length === 1 ? "" : "s"} answered
+                  </p>
+                </div>
+                <Link href={`/resumes/new?app=${resume.id}`} className={buttonVariants("outline", "sm")}>
+                  Open in Resume Builder
+                </Link>
               </CardContent>
             </Card>
           )}
@@ -346,7 +404,7 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
               ) : (
                 <p className="text-sm text-muted-foreground">
                   {isOwnResume
-                    ? "No proof uploaded yet. You're prompted to upload it right after building a resume."
+                    ? "No proof uploaded yet — upload it from this application's Resume Builder workstation."
                     : "Empty — this user hasn't uploaded proof yet."}
                 </p>
               )}

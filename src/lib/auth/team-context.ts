@@ -1,19 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { resolveUserTeams, pickActiveTeam } from "@/lib/auth/team-resolve";
-import { hasTeamAdminPower } from "@/lib/auth/roles";
 import type { UserRole } from "@/generated/prisma/client";
-
-/** The caller's effective role in their active team (SERVICE_ADMIN spans teams). */
-function activeRole(ctx: TeamContext): UserRole | null {
-  return ctx.isServiceAdmin ? "SERVICE_ADMIN" : ctx.teamRole;
-}
-
-/** Can the caller manage invoices in their active team? Team-admin power or a Manager. */
-export function canManageInvoices(ctx: TeamContext): boolean {
-  const role = activeRole(ctx);
-  return hasTeamAdminPower(role) || role === "MANAGER";
-}
 
 /**
  * The multi-tenant request context: who the caller is, which team they're
@@ -74,13 +62,6 @@ export async function requireServiceAdmin(): Promise<TeamContext> {
 export async function requireTeamAdmin(): Promise<TeamContext> {
   const ctx = await requireTeamContext();
   if (!ctx.activeTeamId || !(ctx.isServiceAdmin || ctx.teamRole === "TEAM_ADMIN")) redirect("/");
-  return ctx;
-}
-
-/** Invoice management: team-admin power OR an interview Manager in the active team. */
-export async function requireInvoiceManager(): Promise<TeamContext> {
-  const ctx = await requireTeamContext();
-  if (!ctx.activeTeamId || !canManageInvoices(ctx)) redirect("/");
   return ctx;
 }
 

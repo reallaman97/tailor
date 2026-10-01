@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "@/lib/db";
 import { createTestUser, deleteTestUser } from "@/lib/profile/test-helpers";
-import { recordUsageEvent } from "./usage";
+import { recordUsageEvent, estimateCostMicros } from "./usage";
 
 // UsageEvent here is purely cost/token accounting.
 describe("usage tracking (integration)", () => {
@@ -48,5 +48,20 @@ describe("usage tracking (integration)", () => {
     });
     expect(event.inputTokens).toBe(1000);
     expect(event.estimatedCostMicros).toBe(0);
+  });
+});
+
+describe("estimateCostMicros (prompt-cache pricing)", () => {
+  it("bills cache-hit input tokens at the cache price", () => {
+    // deepseek-v4-pro: $1.32/M input, $0.044/M cached input, $3.96/M output.
+    const uncached = estimateCostMicros("deepseek-v4-pro", 1_000_000, 0);
+    const mostlyCached = estimateCostMicros("deepseek-v4-pro", 1_000_000, 0, 900_000);
+    expect(uncached).toBe(1_320_000);
+    expect(mostlyCached).toBe(Math.round(100_000 * 1.32 + 900_000 * 0.044));
+  });
+
+  it("never counts more cached tokens than input tokens, and prices unknown models at 0", () => {
+    expect(estimateCostMicros("deepseek-flash", 100, 0, 500)).toBe(estimateCostMicros("deepseek-flash", 100, 0, 100));
+    expect(estimateCostMicros("some-new-model", 1_000_000, 1_000_000)).toBe(0);
   });
 });

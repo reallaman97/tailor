@@ -1,8 +1,11 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState } from "react";
 import Link from "next/link";
 import { createResumeAsAdminAction } from "./admin-actions";
+import { GenerationProgress } from "./generation-progress";
+import { useOpenWorkspace } from "./use-open-workspace";
+import { useDuplicateCheck } from "./use-duplicate-check";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,7 +16,7 @@ import { SOURCE_OPTIONS } from "@/lib/resume-status";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import type { ApplicationSource } from "@/generated/prisma/client";
 
-export type BuildableProfile = { id: string; fullName: string | null; userCount: number };
+export type BuildableProfile = { id: string; fullName: string | null; userCount: number; hasBaseResume: boolean };
 
 export function AdminNewResumeForm({ profiles }: { profiles: BuildableProfile[] }) {
   const [state, formAction, pending] = useActionState(createResumeAsAdminAction, undefined);
@@ -24,20 +27,18 @@ export function AdminNewResumeForm({ profiles }: { profiles: BuildableProfile[] 
     storage: "session",
   });
 
-  // On a successful build, download the tailored resume PDF right away.
-  useEffect(() => {
-    if (state?.resumeId) {
-      const a = document.createElement("a");
-      a.href = `/api/resumes/${state.resumeId}/pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    }
-  }, [state?.resumeId]);
+  // On success: download the PDF and open this application's workstation.
+  useOpenWorkspace(state?.resumeId);
+  // Warn about a duplicate (same company, posting, or description) before any tokens are spent.
+  const { duplicate, onBlur } = useDuplicateCheck(profileId);
 
   return (
-    <form action={formAction} className="flex flex-col gap-4">
-      <FormField label="Build for" htmlFor="profileId" hint="Only profiles with at least one assigned account can be tailored for.">
+    <form action={formAction} onBlur={onBlur} className="flex flex-col gap-4">
+      <FormField
+        label="Build for"
+        htmlFor="profileId"
+        hint="Only profiles with an assigned account and an imported base resume can be tailored for."
+      >
         <Select
           id="profileId"
           name="profileId"
@@ -49,13 +50,23 @@ export function AdminNewResumeForm({ profiles }: { profiles: BuildableProfile[] 
             Select a profile
           </option>
           {profiles.map((p) => (
-            <option key={p.id} value={p.id}>
+            <option key={p.id} value={p.id} disabled={!p.hasBaseResume}>
               {p.fullName ?? "Untitled profile"}
               {p.userCount > 1 ? ` (${p.userCount} accounts)` : ""}
+              {p.hasBaseResume ? "" : " — no base resume"}
             </option>
           ))}
         </Select>
       </FormField>
+      {profiles.some((p) => !p.hasBaseResume) && (
+        <p className="-mt-2 text-xs text-muted-foreground">
+          Profiles marked &ldquo;no base resume&rdquo; need their full resume uploaded on the{" "}
+          <Link href="/admin/profiles" className="underline">
+            profile page
+          </Link>{" "}
+          first.
+        </p>
+      )}
 
       <FormField label="Source" htmlFor="source">
         <Select
@@ -96,28 +107,39 @@ export function AdminNewResumeForm({ profiles }: { profiles: BuildableProfile[] 
         />
       </FormField>
 
-      {state?.error && (
+      <GenerationProgress active={pending} />
+
+      {!pending && duplicate && !state?.resumeId && (
+        <Alert variant="destructive">
+          {duplicate.message}{" "}
+          <Link href={`/resumes/new?app=${duplicate.id}`} className="font-medium underline">
+            Continue working on it
+          </Link>
+          .
+        </Alert>
+      )}
+      {!pending && state?.error && (
         <Alert variant="destructive">
           {state.error}
           {state.duplicateId && (
             <>
               {" "}
-              <Link href={`/resumes/${state.duplicateId}`} className="font-medium underline">
-                View the existing application
+              <Link href={`/resumes/new?app=${state.duplicateId}`} className="font-medium underline">
+                Continue working on it
               </Link>
               .
             </>
           )}
         </Alert>
       )}
-      {state?.resumeId && <Alert variant="success">Resume built — the PDF is downloading.</Alert>}
+      {!pending && state?.resumeId && <Alert variant="success">Resume built — opening its workstation…</Alert>}
 
       <div className="flex items-center gap-3">
-        <Button type="submit" loading={pending}>
+        <Button type="submit" loading={pending} disabled={Boolean(duplicate)}>
           {pending ? (state?.error ? "Retrying…" : "Building…") : state?.error ? "Retry" : "Build resume"}
         </Button>
         <Link href="/resumes" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
-          {state?.resumeId ? "Go to applications" : "Cancel"}
+          Cancel
         </Link>
       </div>
     </form>

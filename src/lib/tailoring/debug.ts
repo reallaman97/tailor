@@ -1,16 +1,14 @@
-import OpenAI, { APIError } from "openai";
-import { zodTextFormat } from "openai/helpers/zod";
-import { tailoredContentSchema, type TailoredContent } from "@/lib/tailoring/schema";
-import { buildInput } from "@/lib/tailoring/generate";
-import { getOpenAiApiKey } from "@/lib/settings";
+import type { TailoredContent } from "@/lib/tailoring/schema";
+import { generateTailoredContent } from "@/lib/tailoring/generate";
+import { sanitizeTailoredContent } from "@/lib/tailoring/tailor-resume";
 import type { ResumeFields } from "@/lib/profile/resume-fields";
 
 /**
- * Service-admin tailoring playground. Runs the exact tailoring call the app uses
- * (same input builder + structured-output schema) but returns the full detail —
- * parsed content, raw JSON, token usage, model, and latency — so a prompt/model
- * can be tested and its OpenAI response inspected. The candidate is provided
- * directly (a sample, editable in the UI) rather than pulled from a real profile.
+ * Service-admin tailoring playground. Runs the exact generation the app uses
+ * (secret prompt + output contract + sanitizing) but returns the full detail —
+ * parsed content, validation report, raw JSON, token usage, model, and latency.
+ * The prompt itself is never returned. The candidate is provided directly (a
+ * sample, editable in the UI) rather than pulled from a real profile.
  */
 
 export type TailoringDebugResult = {
@@ -20,55 +18,47 @@ export type TailoringDebugResult = {
   latencyMs: number;
   inputTokens?: number;
   outputTokens?: number;
+  reasoningTokens?: number;
   content?: TailoredContent | null;
   rawJson?: string;
 };
 
-function friendlyError(err: unknown): string {
-  if (err instanceof APIError) {
-    if (err.code === "insufficient_quota") return "OpenAI quota exceeded — the account is out of credits.";
-    if (err.status === 429) return "OpenAI is rate-limiting requests right now — try again in a moment.";
-    if (err.status === 401) return "OpenAI rejected the API key — check it in this team's Settings.";
-    if (err.status === 404) return `Model not found or not accessible: "${err.message}". Check the model name.`;
-    return `OpenAI error (${err.status}): ${err.message}`;
-  }
-  return err instanceof Error ? err.message : "Tailoring request failed.";
-}
-
 export async function runTailoringDebug(opts: {
-  systemPrompt: string;
   model: string;
   candidate: ResumeFields;
   jobDescription: string;
-  teamId?: string | null;
 }): Promise<TailoringDebugResult> {
   const start = Date.now();
-  let apiKey: string;
   try {
-    apiKey = await getOpenAiApiKey(opts.teamId);
-  } catch (err) {
-    return { ok: false, error: friendlyError(err), model: opts.model, latencyMs: 0 };
-  }
-
-  const client = new OpenAI({ apiKey, maxRetries: 1, timeout: 100_000 });
-  try {
-    const response = await client.responses.parse({
-      model: opts.model,
-      instructions: opts.systemPrompt,
-      input: buildInput(opts.candidate, opts.jobDescription),
-      text: { format: zodTextFormat(tailoredContentSchema, "tailored_content") },
-    });
+    const result = await generateTailoredContent(opts.candidate, opts.jobDescription, { model: opts.model });
+    const content = sanitizeTailoredContent(
+      result.output,
+      new Set(opts.candidate.workHistory.map((w) => w.id)),
+      (opts.candidate.certifications ?? []).map((c) => c.name)
+    );
+    let rawJson = result.rawJson;
+    try {
+      rawJson = JSON.stringify(JSON.parse(result.rawJson), null, 2);
+    } catch {
+      // keep the raw text as returned
+    }
     return {
       ok: true,
-      model: opts.model,
-      latencyMs: Date.now() - start,
-      inputTokens: response.usage?.input_tokens ?? 0,
-      outputTokens: response.usage?.output_tokens ?? 0,
-      content: response.output_parsed ?? null,
-      rawJson: JSON.stringify(response.output_parsed ?? {}, null, 2),
+      model: result.model,
+      latencyMs: result.latencyMs,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      reasoningTokens: result.reasoningTokens,
+      content,
+      rawJson,
     };
   } catch (err) {
-    return { ok: false, error: friendlyError(err), model: opts.model, latencyMs: Date.now() - start };
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Generation request failed.",
+      model: opts.model,
+      latencyMs: Date.now() - start,
+    };
   }
 }
 

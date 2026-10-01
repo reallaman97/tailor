@@ -3,7 +3,8 @@
  * `vercel-build` npm scripts). It:
  *   1. ensures the AppSettings singleton row exists,
  *   2. seeds the default Interview config lists (stages / statuses / meeting types),
- *   3. creates/promotes a superadmin from env vars.
+ *   3. creates/promotes a superadmin from env vars,
+ *   4. backfills duplicate-detection keys on applications created before them.
  *
  * Safe to run repeatedly — every write is an upsert, and an existing superadmin
  * keeps their password and encryption key (we only ensure role + approval).
@@ -16,6 +17,7 @@ import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import { hashPassword } from "@/lib/auth/password";
 import { generateDek, wrapDek } from "@/lib/crypto/envelope";
+import { backfillDuplicateKeys } from "@/lib/resumes/resumes";
 
 const STAGES: [id: string, label: string, sortOrder: number][] = [
   ["stage_introduce", "Introduce", 0],
@@ -134,12 +136,10 @@ async function ensureDefaultTenancy(): Promise<void> {
       teamId: team.id,
       openaiModel: app?.openaiModel ?? "gpt-4.1-mini",
       openaiApiKeyEnc: app?.openaiApiKeyEnc ?? null,
-      tailoringPrompt: app?.tailoringPrompt ?? null,
+      resumeModel: app?.resumeModel ?? "deepseek-v4-pro",
       resumeTemplate: app?.resumeTemplate ?? "MODERN",
       interviewTimezone: app?.interviewTimezone ?? "UTC",
-      checkCountry: app?.checkCountry ?? "US",
-      checkWorkStyle: app?.checkWorkStyle ?? "REMOTE",
-      ...(app?.checkJobCategory ? { checkJobCategory: app.checkJobCategory } : {}),
+      checkTechStack: app?.checkTechStack ?? "",
     },
     update: {},
   });
@@ -158,17 +158,8 @@ async function ensureDefaultTenancy(): Promise<void> {
   // TEAM_ADMIN membership (created above) keeps the default team administered.
   const promoted = await db.user.updateMany({ where: { role: "SUPERADMIN" }, data: { role: "SERVICE_ADMIN" } });
 
-  // One-time correction: the bidder application-rate column briefly shipped with
-  // a $0.80 default (a typo). The intended default is $0.08, so migrate any
-  // membership still holding the accidental value. Runs harmlessly (0 rows) once
-  // corrected; managers set deliberate rates on the Rates page thereafter.
-  const rateFix = await db.teamMembership.updateMany({
-    where: { applicationRate: 0.8 },
-    data: { applicationRate: 0.08 },
-  });
-
   console.log(
-    `✓ default tenancy ready (team ${team.id}; ${users.length} memberships ensured; ${promoted.count} SUPERADMIN→SERVICE_ADMIN; ${rateFix.count} rate defaults corrected)`
+    `✓ default tenancy ready (team ${team.id}; ${users.length} memberships ensured; ${promoted.count} SUPERADMIN→SERVICE_ADMIN)`
   );
 }
 
@@ -178,6 +169,8 @@ async function main(): Promise<void> {
   await ensureInterviewConfig();
   await ensureSuperadmin();
   await ensureDefaultTenancy();
+  const keyed = await backfillDuplicateKeys();
+  console.log(`✓ duplicate-detection keys ready (${keyed} older applications backfilled)`);
   console.log("Setup complete.");
 }
 

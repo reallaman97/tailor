@@ -1,4 +1,6 @@
 import { db } from "@/lib/db";
+import { withDbRetry } from "@/lib/db-retry";
+import type { Prisma } from "@/generated/prisma/client";
 import type { StatusConfigInput } from "@/lib/interview/schemas";
 
 /**
@@ -28,11 +30,16 @@ const DEFAULT_MEETING_TYPES = ["Zoom", "Google Meet", "Phone", "Onsite"];
 /** Seeds a new team's interview config lists (no-op if it already has stages). */
 export async function seedTeamInterviewConfig(teamId: string): Promise<void> {
   if ((await db.interviewStage.count({ where: { teamId } })) > 0) return;
-  await db.$transaction([
-    ...DEFAULT_STAGES.map((label, i) => db.interviewStage.create({ data: { label, sortOrder: i, teamId } })),
-    ...DEFAULT_STATUSES.map(([label, color], i) => db.interviewStatus.create({ data: { label, color, sortOrder: i, teamId } })),
-    ...DEFAULT_MEETING_TYPES.map((label, i) => db.interviewMeetingType.create({ data: { label, sortOrder: i, teamId } })),
-  ]);
+  // Creates rows, so only a connection that never opened is retried (a repeat could duplicate them).
+  await withDbRetry(
+    () =>
+      db.$transaction([
+        ...DEFAULT_STAGES.map((label, i) => db.interviewStage.create({ data: { label, sortOrder: i, teamId } })),
+        ...DEFAULT_STATUSES.map(([label, color], i) => db.interviewStatus.create({ data: { label, color, sortOrder: i, teamId } })),
+        ...DEFAULT_MEETING_TYPES.map((label, i) => db.interviewMeetingType.create({ data: { label, sortOrder: i, teamId } })),
+      ]),
+    { idempotent: false }
+  );
 }
 
 export type StageView = { id: string; label: string; sortOrder: number; active: boolean };
@@ -79,7 +86,7 @@ export async function moveStage(id: string, direction: Direction, teamId?: strin
   const rows = await db.interviewStage.findMany({ where: teamId ? { teamId } : {}, orderBy: { sortOrder: "asc" }, select: { id: true, sortOrder: true } });
   const swap = neighborSwap(rows, id, direction);
   if (!swap) return;
-  await db.$transaction([
+  await swapInTransaction(() => [
     db.interviewStage.update({ where: { id: swap.a.id }, data: { sortOrder: swap.b.sortOrder } }),
     db.interviewStage.update({ where: { id: swap.b.id }, data: { sortOrder: swap.a.sortOrder } }),
   ]);
@@ -122,7 +129,7 @@ export async function moveStatus(id: string, direction: Direction, teamId?: stri
   const rows = await db.interviewStatus.findMany({ where: teamId ? { teamId } : {}, orderBy: { sortOrder: "asc" }, select: { id: true, sortOrder: true } });
   const swap = neighborSwap(rows, id, direction);
   if (!swap) return;
-  await db.$transaction([
+  await swapInTransaction(() => [
     db.interviewStatus.update({ where: { id: swap.a.id }, data: { sortOrder: swap.b.sortOrder } }),
     db.interviewStatus.update({ where: { id: swap.b.id }, data: { sortOrder: swap.a.sortOrder } }),
   ]);
@@ -160,10 +167,18 @@ export async function moveMeetingType(id: string, direction: Direction, teamId?:
   const rows = await db.interviewMeetingType.findMany({ where: teamId ? { teamId } : {}, orderBy: { sortOrder: "asc" }, select: { id: true, sortOrder: true } });
   const swap = neighborSwap(rows, id, direction);
   if (!swap) return;
-  await db.$transaction([
+  await swapInTransaction(() => [
     db.interviewMeetingType.update({ where: { id: swap.a.id }, data: { sortOrder: swap.b.sortOrder } }),
     db.interviewMeetingType.update({ where: { id: swap.b.id }, data: { sortOrder: swap.a.sortOrder } }),
   ]);
+}
+
+/**
+ * Runs a sortOrder swap atomically. A swap isn't repeatable — running it twice
+ * swaps the pair back — so only a connection that never opened is retried.
+ */
+async function swapInTransaction(ops: () => Prisma.PrismaPromise<unknown>[]): Promise<void> {
+  await withDbRetry(() => db.$transaction(ops()), { idempotent: false });
 }
 
 /**

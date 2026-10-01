@@ -11,7 +11,7 @@ export default async function AdminSettingsPage() {
   return (
     <AccountShell isSuperAdmin>
       <div className="flex flex-col gap-6">
-        <PageHeader title="Settings" description="Configuration for your team — including its own OpenAI key." />
+        <PageHeader title="Settings" description="Configuration for your team — resume generation model, PDF template, and its own OpenAI key." />
         <SettingsForm settings={settings} />
       </div>
     </AccountShell>

@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { withDbRetry } from "@/lib/db-retry";
 import { Prisma } from "@/generated/prisma/client";
 import { hasTeamAdminPower } from "@/lib/auth/roles";
 import { deleteAccount } from "@/lib/profile/account";
@@ -180,17 +181,22 @@ export async function setUserTeamAndRole(
     throw new CannotDemoteSelfError();
   }
   const memberRole = membershipRole(role);
-  await db.$transaction([
-    db.user.update({ where: { id: targetUserId }, data: { role } }),
-    // Move semantics: drop memberships in any other team...
-    db.teamMembership.deleteMany({ where: { userId: targetUserId, teamId: { not: teamId } } }),
-    // ...and set (create or update) the membership in the chosen team.
-    db.teamMembership.upsert({
-      where: { userId_teamId: { userId: targetUserId, teamId } },
-      create: { userId: targetUserId, teamId, role: memberRole },
-      update: { role: memberRole },
-    }),
-  ]);
+  // Sets role + membership to fixed values, so it's safe to repeat after a transient failure.
+  await withDbRetry(
+    () =>
+      db.$transaction([
+        db.user.update({ where: { id: targetUserId }, data: { role } }),
+        // Move semantics: drop memberships in any other team...
+        db.teamMembership.deleteMany({ where: { userId: targetUserId, teamId: { not: teamId } } }),
+        // ...and set (create or update) the membership in the chosen team.
+        db.teamMembership.upsert({
+          where: { userId_teamId: { userId: targetUserId, teamId } },
+          create: { userId: targetUserId, teamId, role: memberRole },
+          update: { role: memberRole },
+        }),
+      ]),
+    { idempotent: true }
+  );
 }
 
 /**

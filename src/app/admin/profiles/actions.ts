@@ -2,38 +2,40 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { z } from "zod";
 import { requireSuperAdmin } from "@/lib/auth/require-user";
 import { requireTeamAdmin } from "@/lib/auth/team-context";
-import { personalInfoSchema } from "@/lib/profile/schemas";
+import { deleteProfile, assignProfileToUser, unassignUser } from "@/lib/admin/profiles";
+import { createProfileFromReviewedResume, InvalidBaseResumeError } from "@/lib/base-resume/apply";
 import {
-  createProfile,
-  deleteProfile,
-  assignProfileToUser,
-  unassignUser,
-} from "@/lib/admin/profiles";
+  validateReviewedProfile,
+  type ReviewSubmission,
+  type ReviewSubmitResult,
+} from "@/lib/base-resume/reviewed-profile";
 
-export type CreateProfileState = { error?: string } | undefined;
-
-function firstIssue(error: z.ZodError): string {
-  return error.issues[0]?.message ?? "Invalid input";
-}
-
-function formDataToObject(formData: FormData): Record<string, string> {
-  return Object.fromEntries(formData.entries()) as Record<string, string>;
-}
-
-export async function createProfileAction(
-  _prevState: CreateProfileState,
-  formData: FormData
-): Promise<CreateProfileState> {
+/**
+ * Creates a profile from its base resume — the only way to create one. The
+ * admin uploaded the resume, we parsed it into the review form, and they
+ * confirmed/corrected every section; the whole submission is validated here
+ * with the same rules the form uses, field by field.
+ */
+export async function createProfileFromResumeAction(submission: ReviewSubmission): Promise<ReviewSubmitResult> {
   const ctx = await requireTeamAdmin();
-  const parsed = personalInfoSchema.safeParse(formDataToObject(formData));
-  if (!parsed.success) return { error: firstIssue(parsed.error) };
+  const validated = validateReviewedProfile(submission.profile);
+  if (!validated.ok) return { error: "Fix the highlighted fields.", fieldErrors: validated.fieldErrors };
 
-  const profileId = await createProfile(parsed.data, ctx.activeTeamId ?? undefined);
+  let profileId: string;
+  try {
+    profileId = await createProfileFromReviewedResume(
+      validated.data,
+      { sourceText: submission.sourceText, fileName: submission.fileName },
+      ctx.activeTeamId ?? null
+    );
+  } catch (err) {
+    if (err instanceof InvalidBaseResumeError) return { error: err.message };
+    throw err;
+  }
   revalidatePath("/admin/profiles");
-  redirect(`/admin/profiles/${profileId}`);
+  redirect(`/admin/profiles/${profileId}?created=1`);
 }
 
 export async function deleteProfileAction(profileId: string): Promise<void> {

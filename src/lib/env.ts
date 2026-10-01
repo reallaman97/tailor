@@ -35,6 +35,20 @@ const serverEnvSchema = z.object({
   // OpenAI: env key is the fallback when no per-app Settings override is set.
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().min(1).default("gpt-4.1-mini"),
+
+  // DeepSeek powers resume generation. Optional at boot (the rest of the app
+  // works without it); generation reports a clear error when it's missing.
+  DEEPSEEK_API_KEY: z.string().optional(),
+
+  // The secret resume-generation prompt, base64-encoded UTF-8 (see
+  // src/lib/tailoring/resume-prompt.ts). Optional at boot like the key above,
+  // but if it's set it must decode to real text — catches a truncated paste.
+  RESUME_PROMPT_B64: z
+    .string()
+    .optional()
+    .refine((value) => !value?.trim() || Buffer.from(value.trim(), "base64").toString("utf8").trim().length > 0, {
+      message: "RESUME_PROMPT_B64 must be base64-encoded prompt text",
+    }),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;

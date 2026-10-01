@@ -1,36 +1,28 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState } from "react";
 import Link from "next/link";
 import { createResumeAction } from "./actions";
-import { ScreenshotUploadDialog } from "@/app/resumes/[id]/screenshot-upload-dialog";
+import { GenerationProgress } from "./generation-progress";
+import { useOpenWorkspace } from "./use-open-workspace";
+import { useDuplicateCheck } from "./use-duplicate-check";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 
-/** Triggers a browser download of the tailored resume PDF (the route serves it as an attachment). */
-function downloadPdf(resumeId: string) {
-  const a = document.createElement("a");
-  a.href = `/api/resumes/${resumeId}/pdf`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-}
-
 export function NewResumeForm() {
   const [state, formAction, pending] = useActionState(createResumeAction, undefined);
 
-  // On a successful build, download the tailored resume right away. The upload
-  // dialog (rendered below) auto-opens to collect proof of application.
-  useEffect(() => {
-    if (state?.resumeId) downloadPdf(state.resumeId);
-  }, [state?.resumeId]);
+  // On success: download the PDF and open this application's workstation.
+  useOpenWorkspace(state?.resumeId);
+  // Warn about a duplicate (same company, posting, or description) before any tokens are spent.
+  const { duplicate, onBlur } = useDuplicateCheck();
 
   return (
     <>
-      <form action={formAction} className="flex flex-col gap-4">
+      <form action={formAction} onBlur={onBlur} className="flex flex-col gap-4">
         <FormField label="Company name" htmlFor="companyName">
           <Input id="companyName" name="companyName" required autoFocus defaultValue={state?.values?.companyName} />
         </FormField>
@@ -55,45 +47,44 @@ export function NewResumeForm() {
           />
         </FormField>
 
-        {state?.error && (
+        <GenerationProgress active={pending} />
+
+        {!pending && duplicate && !state?.resumeId && (
+          <Alert variant="destructive">
+            {duplicate.message}{" "}
+            <Link href={`/resumes/new?app=${duplicate.id}`} className="font-medium underline">
+              Continue working on it
+            </Link>
+            .
+          </Alert>
+        )}
+        {!pending && state?.error && (
           <Alert variant="destructive">
             {state.error}
             {state.duplicateId && (
               <>
                 {" "}
-                <Link href={`/resumes/${state.duplicateId}`} className="font-medium underline">
-                  View the existing application
+                <Link href={`/resumes/new?app=${state.duplicateId}`} className="font-medium underline">
+                  Continue working on it
                 </Link>
                 .
               </>
             )}
           </Alert>
         )}
-        {state?.resumeId && (
-          <Alert variant="success">
-            Resume built — your PDF is downloading. Upload proof of application in the dialog to finish.
-          </Alert>
+        {!pending && state?.resumeId && (
+          <Alert variant="success">Resume built — opening its workstation…</Alert>
         )}
 
         <div className="flex items-center gap-3">
-          <Button type="submit" loading={pending}>
+          <Button type="submit" loading={pending} disabled={Boolean(duplicate)}>
             {pending ? (state?.error ? "Retrying…" : "Building…") : state?.error ? "Retry" : "Build resume"}
           </Button>
           <Link href="/resumes" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
-            {state?.resumeId ? "Go to applications" : "Cancel"}
+            Cancel
           </Link>
         </div>
       </form>
-
-      {state?.resumeId && (
-        <ScreenshotUploadDialog
-          key={state.resumeId}
-          resumeId={state.resumeId}
-          hasScreenshot={false}
-          autoOpen
-          showTrigger={false}
-        />
-      )}
     </>
   );
 }

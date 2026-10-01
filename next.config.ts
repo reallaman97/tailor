@@ -39,6 +39,19 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Base-resume import parses uploaded PDF/DOCX files server-side. Both parsers
+  // load their own internals at runtime (pdf-parse bundles pdf.js and its
+  // worker), so they must be required from node_modules rather than bundled.
+  serverExternalPackages: ["pdf-parse", "mammoth"],
+  experimental: {
+    serverActions: {
+      // Proof-of-application screenshots are uploaded through a server action
+      // and may be up to 4.5MB (MAX_SCREENSHOT_BYTES); the default cap is 1MB,
+      // which silently rejected most full-page screenshots. The client also
+      // re-encodes oversized images before sending (screenshot-upload.tsx).
+      bodySizeLimit: "5mb",
+    },
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

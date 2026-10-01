@@ -2,7 +2,7 @@ import { requireTeamAdmin } from "@/lib/auth/team-context";
 import { db } from "@/lib/db";
 import {
   listApplicationChecks,
-  WORK_STYLE_OPTIONS,
+  parseTechStack,
   type CheckedApplication,
   type CheckStatus,
 } from "@/lib/checks/application-checks";
@@ -34,8 +34,8 @@ function dayLabel(dayKey: string): string {
 }
 
 const STATUS_BADGE: Record<CheckStatus, { label: string; variant: "success" | "destructive" | "secondary" | "warning" }> = {
-  PASS: { label: "Pass", variant: "success" },
-  FAIL: { label: "Fail", variant: "destructive" },
+  PASS: { label: "Relevant", variant: "success" },
+  FAIL: { label: "Not relevant", variant: "destructive" },
   UNCHECKED: { label: "Unchecked", variant: "secondary" },
   STALE: { label: "Stale", variant: "warning" },
 };
@@ -50,12 +50,23 @@ function Tile({ label, value, accent }: { label: string; value: string; accent?:
   );
 }
 
-function Crit({ ok, text }: { ok: boolean | null; text: string | null }) {
-  if (ok === null) return <span className="text-muted-foreground/50">—</span>;
+function TechList({ items, emphasis }: { items: string[]; emphasis?: boolean }) {
+  if (items.length === 0) return <span className="text-muted-foreground/50">—</span>;
   return (
-    <span className={ok ? "text-success" : "text-destructive"}>
-      {ok ? "✓" : "✗"} {text || (ok ? "" : "no")}
-    </span>
+    <div className="flex flex-wrap gap-1">
+      {items.map((t) => (
+        <span
+          key={t}
+          className={
+            emphasis
+              ? "rounded border border-success/30 bg-success/10 px-1.5 py-0.5 text-xs text-foreground"
+              : "rounded border border-border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
+          }
+        >
+          {t}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -119,17 +130,21 @@ export default async function ChecksPage({
       <div className="flex flex-col gap-6">
         <PageHeader
           title="Application checks"
-          description="Verify each bidder's applications, day by day, against your criteria — checked in batches to keep API calls minimal."
+          description="Check, day by day, whether each application's tech stack is relevant to your target stack — in batches to keep API calls minimal."
         />
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Criteria</CardTitle>
-              <CardDescription>What makes an application “right”. Editable — these defaults are the baseline.</CardDescription>
+              <CardTitle>Target stack</CardTitle>
+              <CardDescription>
+                {parseTechStack(criteria.techStack).length > 0
+                  ? "Applications are judged only on whether their stack is relevant to this."
+                  : "Set your team's stack to start checking applications."}
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <CriteriaForm criteria={criteria} workStyleOptions={WORK_STYLE_OPTIONS} />
+              <CriteriaForm techStack={criteria.techStack} />
             </CardContent>
           </Card>
 
@@ -144,11 +159,11 @@ export default async function ChecksPage({
             <CardContent>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <Tile label="Applications" value={String(summary.total)} />
-                <Tile label="Pass" value={String(summary.passed)} accent="success" />
-                <Tile label="Fail" value={String(summary.failed)} accent="destructive" />
+                <Tile label="Relevant" value={String(summary.passed)} accent="success" />
+                <Tile label="Not relevant" value={String(summary.failed)} accent="destructive" />
                 <Tile label="Unchecked" value={String(summary.unchecked)} accent="muted" />
                 <Tile label="Stale" value={String(summary.stale)} accent="muted" />
-                <Tile label="Pass rate" value={`${passRate}%`} />
+                <Tile label="Relevant rate" value={`${passRate}%`} />
               </div>
               {(summary.unchecked > 0 || summary.stale > 0) && (
                 <p className="mt-3 text-sm text-muted-foreground">
@@ -182,8 +197,8 @@ export default async function ChecksPage({
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <h3 className="text-sm font-semibold text-foreground">{dayLabel(day)}</h3>
                       <span className="text-xs text-muted-foreground">{list.length} total</span>
-                      {dayPass > 0 && <Badge variant="success">{dayPass} pass</Badge>}
-                      {dayFail > 0 && <Badge variant="destructive">{dayFail} fail</Badge>}
+                      {dayPass > 0 && <Badge variant="success">{dayPass} relevant</Badge>}
+                      {dayFail > 0 && <Badge variant="destructive">{dayFail} not relevant</Badge>}
                       {dayPending > 0 && <Badge variant="secondary">{dayPending} pending</Badge>}
                     </div>
                     <div className="overflow-x-auto rounded-lg border border-border">
@@ -194,9 +209,8 @@ export default async function ChecksPage({
                             <th className="p-2.5 font-medium text-muted-foreground">Company</th>
                             <th className="p-2.5 font-medium text-muted-foreground">Job title</th>
                             <th className="p-2.5 font-medium text-muted-foreground">Verdict</th>
-                            <th className="p-2.5 font-medium text-muted-foreground">Country</th>
-                            <th className="p-2.5 font-medium text-muted-foreground">Work style</th>
-                            <th className="p-2.5 font-medium text-muted-foreground">Category</th>
+                            <th className="p-2.5 font-medium text-muted-foreground">Matched tech</th>
+                            <th className="p-2.5 font-medium text-muted-foreground">Their stack</th>
                             <th className="p-2.5 font-medium text-muted-foreground">Reason</th>
                           </tr>
                         </thead>
@@ -219,14 +233,11 @@ export default async function ChecksPage({
                                 <td className="p-2.5">
                                   <Badge variant={badge.variant}>{badge.label}</Badge>
                                 </td>
-                                <td className="p-2.5 whitespace-nowrap">
-                                  <Crit ok={a.countryOk} text={a.detectedCountry} />
+                                <td className="p-2.5 max-w-[16rem]">
+                                  <TechList items={a.matchedTech} emphasis />
                                 </td>
-                                <td className="p-2.5 whitespace-nowrap">
-                                  <Crit ok={a.remoteOk} text={a.detectedWorkStyle} />
-                                </td>
-                                <td className="p-2.5 whitespace-nowrap">
-                                  <Crit ok={a.categoryOk} text={a.detectedCategory} />
+                                <td className="p-2.5 max-w-[16rem]">
+                                  <TechList items={a.primaryStack} />
                                 </td>
                                 <td className="p-2.5 text-muted-foreground max-w-[22rem]">{a.reason ?? "—"}</td>
                               </tr>

@@ -2,42 +2,77 @@ import { db } from "@/lib/db";
 import { getResume, scopeFilter, ResumeNotFoundError } from "@/lib/resumes/resumes";
 import { getResumeFields } from "@/lib/profile/resume-fields";
 import { getAssignedProfileId } from "@/lib/profile/shared";
+import { getBaseResumeStatus } from "@/lib/base-resume/status";
 import { getProfileDek } from "@/lib/profile/dek";
 import { encryptJson, decryptJson } from "@/lib/profile/crypto";
 import { generateTailoredContent, TAILORING_PROMPT_VERSION } from "@/lib/tailoring/generate";
 import { recordUsageEvent } from "@/lib/tailoring/usage";
 import { getSettings } from "@/lib/settings";
-import type { TailoredContent, StoredTailoredContent } from "@/lib/tailoring/schema";
+import type { ModelOutput, TailoredContent, StoredTailoredContent, ValidationReport } from "@/lib/tailoring/schema";
+
+export const NO_BASE_RESUME_MESSAGE =
+  "This profile has no base resume yet — an admin must upload the candidate's full resume on the profile page before tailored resumes can be generated.";
 
 export class ProfileIncompleteError extends Error {
-  constructor() {
-    super("Save your personal info before generating a tailored resume");
+  constructor(message = "Save your personal info before generating a tailored resume") {
+    super(message);
   }
 }
 
-const MAX_SKILLS = 90; // generous — allow comprehensive JD keyword coverage in the Skills section
+const MAX_SKILLS = 90;
+const MAX_TITLE_LENGTH = 100;
+const MAX_REPORT_NOTES = 12;
+
+function clampPercent(value: number): number {
+  return Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : 0;
+}
+
+function sanitizeReport(report: ModelOutput["validationReport"]): ValidationReport {
+  return {
+    atsMatchScore: clampPercent(report.atsMatchScore),
+    aiProbability: clampPercent(report.aiProbability),
+    researchContributionCheck: report.researchContributionCheck.trim(),
+    evidencePlacementCheck: report.evidencePlacementCheck.trim(),
+    titleRealismCheck: report.titleRealismCheck.trim(),
+    gapsAndRisks: report.gapsAndRisks
+      .map((note) => note.trim())
+      .filter(Boolean)
+      .slice(0, MAX_REPORT_NOTES),
+  };
+}
 
 /**
- * Filters the model's output against the candidate's real data:
+ * Maps the model's answer onto the candidate's real data:
  * - work-history entries whose id wasn't given are dropped (guards against a
- *   hallucinated id breaking the bullet→entry mapping);
+ *   hallucinated id breaking the bullet→entry mapping). Company, dates, and
+ *   location are never taken from the model — only the (realigned) title and
+ *   bullets, which the prompt explicitly allows changing;
  * - certifications are matched (case-insensitively) to the candidate's real
  *   certifications — a fabricated one is dropped (the prompt forbids inventing
  *   certifications);
- * - skills are deliberately NOT restricted to the profile: the tailoring prompt
- *   intentionally adds JD-required and ecosystem keywords for ATS coverage. We
- *   only tidy them (trim, dedupe, drop empties/categories, cap the total).
+ * - skills aren't restricted to the profile (the prompt adds required JD skills
+ *   where plausible); they're only tidied (trim, dedupe, drop empties, cap).
  */
 export function sanitizeTailoredContent(
-  raw: TailoredContent,
+  raw: ModelOutput,
   allowedEntryIds: Set<string>,
   allowedCertNames: string[]
 ): TailoredContent {
-  const workHistory = raw.workHistory.filter((w) => allowedEntryIds.has(w.entryId));
+  const seenEntry = new Set<string>();
+  const workHistory: TailoredContent["workHistory"] = [];
+  for (const entry of raw.resume.experience) {
+    if (!allowedEntryIds.has(entry.entryId) || seenEntry.has(entry.entryId)) continue;
+    seenEntry.add(entry.entryId);
+    workHistory.push({
+      entryId: entry.entryId,
+      jobTitle: entry.jobTitle.trim().slice(0, MAX_TITLE_LENGTH),
+      bullets: entry.bullets.map((b) => b.trim()).filter(Boolean),
+    });
+  }
 
   const seenSkill = new Set<string>();
   let skillCount = 0;
-  const skillCategories = raw.skillCategories
+  const skillCategories = raw.resume.skills
     .map((cat) => {
       const skills: string[] = [];
       for (const s of cat.skills) {
@@ -56,7 +91,7 @@ export function sanitizeTailoredContent(
   const certByLower = new Map(allowedCertNames.map((n) => [n.toLowerCase(), n]));
   const seenCert = new Set<string>();
   const orderedCertifications: string[] = [];
-  for (const name of raw.orderedCertifications) {
+  for (const name of raw.resume.certifications) {
     const match = certByLower.get(name.trim().toLowerCase());
     if (match && !seenCert.has(match)) {
       seenCert.add(match);
@@ -64,10 +99,17 @@ export function sanitizeTailoredContent(
     }
   }
 
-  // Cap the headline defensively (a tagline, not a paragraph).
-  const headline = raw.headline.trim().slice(0, 160);
+  // Cap the headline defensively (a title line, not a paragraph).
+  const headline = raw.resume.headline.trim().slice(0, 160);
 
-  return { headline, summary: raw.summary, workHistory, skillCategories, orderedCertifications };
+  return {
+    headline,
+    summary: raw.resume.summary.trim(),
+    workHistory,
+    skillCategories,
+    orderedCertifications,
+    validationReport: sanitizeReport(raw.validationReport),
+  };
 }
 
 export async function tailorResume(userId: string, resumeId: string): Promise<void> {
@@ -76,6 +118,11 @@ export async function tailorResume(userId: string, resumeId: string): Promise<vo
 
   const resumeFields = await getResumeFields(userId);
   if (!resumeFields) throw new ProfileIncompleteError();
+  // The prompt only asks for confirmation when the resume is missing — catch
+  // that here instead of paying for a call that can't produce a resume.
+  if (resumeFields.workHistory.length === 0) {
+    throw new ProfileIncompleteError("Add work history to the profile before generating a tailored resume");
+  }
 
   // Tailored content is encrypted with the PROFILE's DEK (not the caller's
   // account DEK) so any team member sharing that profile can read it back —
@@ -83,20 +130,23 @@ export async function tailorResume(userId: string, resumeId: string): Promise<vo
   const profileId = await getAssignedProfileId(userId);
   if (!profileId) throw new ProfileIncompleteError();
 
-  // Multi-tenancy: use the application's team's settings + OpenAI key.
+  // The prompt tailors an existing resume ("keep it close to the original
+  // length"), so generating from a profile that was never given a full base
+  // resume produces thin, JD-invented content. Require one first.
+  if (!(await getBaseResumeStatus(profileId))) throw new ProfileIncompleteError(NO_BASE_RESUME_MESSAGE);
+
+  // Multi-tenancy: the application's team picks the DeepSeek model.
   const teamRow = await db.resume.findUnique({ where: { id: resumeId }, select: { teamId: true } });
   const teamId = teamRow?.teamId ?? null;
 
   const settings = await getSettings(teamId);
   const result = await generateTailoredContent(resumeFields, resume.jobDescription, {
-    model: settings.openaiModel,
-    systemPrompt: settings.tailoringPrompt,
-    teamId,
+    model: settings.resumeModel,
   });
 
   const allowedEntryIds = new Set(resumeFields.workHistory.map((w) => w.id));
   const allowedCertNames = resumeFields.certifications.map((c) => c.name);
-  const content = sanitizeTailoredContent(result.content, allowedEntryIds, allowedCertNames);
+  const content = sanitizeTailoredContent(result.output, allowedEntryIds, allowedCertNames);
 
   const dek = await getProfileDek(profileId);
   const tailoredContentEnc = encryptJson(dek, content);
@@ -120,6 +170,7 @@ export async function tailorResume(userId: string, resumeId: string): Promise<vo
     kind: "tailoring",
     model: result.model,
     inputTokens: result.inputTokens,
+    cachedInputTokens: result.cachedInputTokens,
     outputTokens: result.outputTokens,
   });
 }

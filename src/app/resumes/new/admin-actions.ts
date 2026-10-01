@@ -53,13 +53,13 @@ export async function createResumeAsAdminAction(
     return { error: "That profile has no assigned account to build for", values };
   }
 
-  const roleTrack = await classifyRoleTrack(parsed.data.jobTitle, parsed.data.jobDescription);
-
+  // Create first: the duplicate check inside createResume must run before ANY
+  // AI call (role-track classification included), so a duplicate costs nothing.
   let resumeId: string;
   try {
     resumeId = await createResume(targetUser.id, {
       ...parsed.data,
-      roleTrack,
+      roleTrack: "OTHER", // classified below, concurrently with tailoring
       source: sourceParsed.data,
       status: "APPLIED",
     });
@@ -70,17 +70,27 @@ export async function createResumeAsAdminAction(
   }
 
   // Build the tailored resume for the profile's account right away.
-  return tailorAndFinish(targetUser.id, resumeId, values);
+  return tailorAndFinish(targetUser.id, resumeId, values, parsed.data);
 }
 
-/** Tailors a just-created application; on failure rolls it back so nothing is recorded. */
+/**
+ * Tailors a just-created application, classifying its role track concurrently
+ * (best-effort); on tailoring failure rolls the application back so nothing is
+ * recorded.
+ */
 async function tailorAndFinish(
   ownerUserId: string,
   resumeId: string,
-  values: NewResumeValues
+  values: NewResumeValues,
+  job: { jobTitle: string; jobDescription: string }
 ): Promise<NewResumeState> {
   try {
-    await tailorResume(ownerUserId, resumeId);
+    await Promise.all([
+      tailorResume(ownerUserId, resumeId),
+      classifyRoleTrack(job.jobTitle, job.jobDescription)
+        .then((roleTrack) => (roleTrack !== "OTHER" ? db.resume.update({ where: { id: resumeId }, data: { roleTrack } }) : null))
+        .catch(() => {}),
+    ]);
   } catch (err) {
     await db.resume.delete({ where: { id: resumeId } }).catch(() => {});
     if (err instanceof ProfileIncompleteError) {

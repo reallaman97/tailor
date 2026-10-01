@@ -34,6 +34,12 @@ import {
   deleteSkillGroup,
   DuplicateCategoryError,
 } from "@/lib/profile/skills";
+import { applyReviewedProfile, InvalidBaseResumeError } from "@/lib/base-resume/apply";
+import {
+  validateReviewedProfile,
+  type ReviewSubmission,
+  type ReviewSubmitResult,
+} from "@/lib/base-resume/reviewed-profile";
 
 // All actions in this file edit a profile in the admin-managed pool —
 // normal users can no longer edit profile fields at all, so every mutation
@@ -231,4 +237,32 @@ export async function deleteSkillGroupAction(profileId: string, category: string
   await requireSuperAdmin();
   await deleteSkillGroup(profileId, category);
   revalidatePath(`/admin/profiles/${profileId}`);
+}
+
+/**
+ * Replaces this profile's base resume with a newly uploaded one, after the
+ * admin reviewed/corrected the parsed sections — validated field by field with
+ * the same rules as the form. Date of birth and address are left untouched.
+ */
+export async function replaceBaseResumeAction(
+  profileId: string,
+  submission: ReviewSubmission
+): Promise<ReviewSubmitResult> {
+  await requireSuperAdmin();
+  const validated = validateReviewedProfile(submission.profile);
+  if (!validated.ok) return { error: "Fix the highlighted fields.", fieldErrors: validated.fieldErrors };
+
+  try {
+    await applyReviewedProfile(profileId, validated.data, {
+      sourceText: submission.sourceText,
+      fileName: submission.fileName,
+    });
+  } catch (err) {
+    if (err instanceof InvalidBaseResumeError) return { error: err.message };
+    throw err;
+  }
+  revalidatePath(`/admin/profiles/${profileId}`);
+  revalidatePath("/admin/profiles");
+  revalidatePath("/resumes/new");
+  return undefined;
 }

@@ -1,7 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { buildResumeDocument } from "./build-document";
 import type { ResumeFields } from "@/lib/profile/resume-fields";
-import type { TailoredContent, StoredTailoredContent } from "@/lib/tailoring/schema";
+import type { TailoredContent, StoredTailoredContent, ValidationReport } from "@/lib/tailoring/schema";
+
+const REPORT: ValidationReport = {
+  atsMatchScore: 90,
+  aiProbability: 10,
+  researchContributionCheck: "",
+  evidencePlacementCheck: "",
+  titleRealismCheck: "",
+  gapsAndRisks: [],
+};
 
 const BASE_FIELDS: ResumeFields = {
   fullName: "Jane Doe",
@@ -80,9 +89,10 @@ describe("buildResumeDocument", () => {
     const tailored: TailoredContent = {
       headline: "Senior Engineer | Cloud",
       summary: "Tailored summary for this job.",
-      workHistory: [{ entryId: "entry-new", bullets: ["Tailored new bullet"] }],
+      workHistory: [{ entryId: "entry-new", jobTitle: "", bullets: ["Tailored new bullet"] }],
       skillCategories: [{ category: "Core", skills: ["Docker", "TypeScript"] }],
       orderedCertifications: [],
+      validationReport: REPORT,
     };
 
     const doc = buildResumeDocument(BASE_FIELDS, tailored);
@@ -102,9 +112,10 @@ describe("buildResumeDocument", () => {
     const tailored: TailoredContent = {
       headline: "h",
       summary: "s",
-      workHistory: [{ entryId: "entry-new", bullets: ["only new tailored"] }],
+      workHistory: [{ entryId: "entry-new", jobTitle: "", bullets: ["only new tailored"] }],
       skillCategories: [],
       orderedCertifications: [],
+      validationReport: REPORT,
     };
     const doc = buildResumeDocument(BASE_FIELDS, tailored);
     expect(doc.workHistory).toHaveLength(2);
@@ -113,8 +124,41 @@ describe("buildResumeDocument", () => {
     ]);
   });
 
+  it("uses a realigned title where given, keeping the profile's company and dates", () => {
+    const tailored: TailoredContent = {
+      headline: "h",
+      summary: "s",
+      workHistory: [
+        { entryId: "entry-new", jobTitle: "Senior Implementation Engineer", bullets: ["b"] },
+        { entryId: "entry-old", jobTitle: "  ", bullets: ["b"] },
+      ],
+      skillCategories: [],
+      orderedCertifications: [],
+      validationReport: REPORT,
+    };
+    const doc = buildResumeDocument(BASE_FIELDS, tailored);
+    const newCo = doc.workHistory.find((w) => w.company === "NewCo");
+    expect(newCo?.jobTitle).toBe("Senior Implementation Engineer");
+    expect(newCo?.startDate).toBe("2020-02");
+    // A blank title from the model keeps the profile's own.
+    expect(doc.workHistory.find((w) => w.company === "OldCo")?.jobTitle).toBe("Junior Engineer");
+  });
+
+  it("keeps profile titles for content stored before title realignment existed", () => {
+    const legacy: StoredTailoredContent = { summary: "s", workHistory: [{ entryId: "entry-new", bullets: ["b"] }] };
+    const doc = buildResumeDocument(BASE_FIELDS, legacy);
+    expect(doc.workHistory.find((w) => w.company === "NewCo")?.jobTitle).toBe("Senior Engineer");
+  });
+
   it("falls back to the profile's own skill groups when tailored skillCategories is empty", () => {
-    const tailored: TailoredContent = { headline: "h", summary: "s", workHistory: [], skillCategories: [], orderedCertifications: [] };
+    const tailored: TailoredContent = {
+      headline: "h",
+      summary: "s",
+      workHistory: [],
+      skillCategories: [],
+      orderedCertifications: [],
+      validationReport: REPORT,
+    };
     const doc = buildResumeDocument(BASE_FIELDS, tailored);
     expect(doc.skills).toEqual([
       { category: "Languages", skills: ["TypeScript", "Python"] },

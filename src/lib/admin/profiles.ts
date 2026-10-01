@@ -9,6 +9,8 @@ export type AdminProfileSummary = {
   fullName: string | null;
   assignedUsers: Array<{ id: string; email: string }>;
   createdAt: Date;
+  /** When the base resume was imported; null = none yet, so generation is blocked. */
+  baseResumeImportedAt: Date | null;
 };
 
 export async function listAllProfiles(teamId?: string): Promise<AdminProfileSummary[]> {
@@ -25,6 +27,7 @@ export async function listAllProfiles(teamId?: string): Promise<AdminProfileSumm
     fullName: decryptField(unwrapDek(profile.encryptedDek), profile.fullNameEnc),
     assignedUsers: profile.users,
     createdAt: profile.createdAt,
+    baseResumeImportedAt: profile.baseResumeImportedAt,
   }));
 }
 

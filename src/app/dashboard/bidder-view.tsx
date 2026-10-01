@@ -4,14 +4,9 @@ import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { LineChart } from "@/components/line-chart";
-import { FileTextIcon, CheckCircleIcon, TargetIcon, DollarSignIcon } from "@/components/icons";
-import { getApplicationRate } from "@/lib/admin/rates";
+import { FileTextIcon, CheckCircleIcon, TargetIcon, CalendarIcon } from "@/components/icons";
 import { getBidderSelfStats, getBidderSelfCounts, normalizeBidderPeriod } from "@/lib/resumes/analytics";
 import { BidderPeriodToggle } from "./bidder-period-toggle";
-
-function usd(n: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
-}
 
 const ACCENT = {
   primary: "text-primary bg-primary/10",
@@ -47,9 +42,9 @@ function StatCard({
 const PERIOD_NOUN: Record<string, string> = { week: "this week", month: "this month", year: "this year" };
 
 /**
- * A bidder's personal dashboard: today's / this week's earnings up top, headline
- * counts, and a per-period (week / month / year) breakdown of their application
- * counts as both a chart and a table.
+ * A bidder's personal dashboard: headline counts (including what they completed
+ * today and this week), and a per-period (week / month / year) breakdown of
+ * their completed applications as both a chart and a table.
  */
 export async function BidderDashboard({
   userId,
@@ -65,9 +60,8 @@ export async function BidderDashboard({
   period?: string;
 }) {
   const activePeriod = normalizeBidderPeriod(period);
-  const rate = await getApplicationRate(userId, teamId);
   const [stats, counts] = await Promise.all([
-    getBidderSelfStats({ userId, teamId, rate }),
+    getBidderSelfStats({ userId, teamId }),
     getBidderSelfCounts({ userId, teamId, period: activePeriod }),
   ]);
   const completionRate = stats.applicationCount > 0 ? (stats.completedCount / stats.applicationCount) * 100 : 0;
@@ -77,45 +71,18 @@ export async function BidderDashboard({
       <div className="flex flex-col gap-6">
         <PageHeader
           title="Your Dashboard"
-          description={
-            teamName
-              ? `Your applications and earnings in ${teamName}.`
-              : "Your applications and earnings at a glance."
-          }
+          description={teamName ? `Your applications in ${teamName}.` : "Your applications at a glance."}
         />
 
-        {/* Earnings hero — today up top, with this-week and all-time alongside */}
-        <Card className="border-success/20 bg-gradient-to-br from-success/10 via-card to-card">
-          <div className="flex flex-col gap-6 p-6 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex items-center gap-4">
-              <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-success/15 text-success">
-                <DollarSignIcon className="size-6" />
-              </div>
-              <div>
-                <div className="text-sm font-medium text-muted-foreground">Today&apos;s earning</div>
-                <div className="text-4xl font-bold tabular-nums text-foreground">{usd(stats.todayEarning)}</div>
-                <div className="mt-0.5 text-xs text-muted-foreground">
-                  {stats.completedToday} completed today · {usd(rate)} per completed application
-                </div>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-6 border-t border-border pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-              <div>
-                <div className="text-sm font-medium text-muted-foreground">This week</div>
-                <div className="text-2xl font-semibold tabular-nums text-foreground">{usd(stats.weeklyEarning)}</div>
-                <div className="text-xs text-muted-foreground">{stats.completedThisWeek} completed</div>
-              </div>
-              <div>
-                <div className="text-sm font-medium text-muted-foreground">All-time</div>
-                <div className="text-2xl font-semibold tabular-nums text-foreground">{usd(stats.totalEarning)}</div>
-                <div className="text-xs text-muted-foreground">{stats.completedCount} completed</div>
-              </div>
-            </div>
-          </div>
-        </Card>
-
         {/* Counts */}
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="Completed today"
+            value={String(stats.completedToday)}
+            icon={<CalendarIcon className="size-5" />}
+            accent="success"
+            hint={`${stats.completedThisWeek} this week`}
+          />
           <StatCard
             label="Applications"
             value={String(stats.applicationCount)}

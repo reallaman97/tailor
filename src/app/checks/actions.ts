@@ -2,8 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireTeamAdmin } from "@/lib/auth/team-context";
-import { runPendingChecks, updateCheckCriteria } from "@/lib/checks/application-checks";
-import type { WorkStyle } from "@/lib/checks/application-checks";
+import { runPendingChecks, updateCheckCriteria, parseTechStack } from "@/lib/checks/application-checks";
 
 function parseDate(value: FormDataEntryValue | null): Date | undefined {
   const s = typeof value === "string" ? value : "";
@@ -32,7 +31,7 @@ export async function runChecksAction(_prev: RunState, formData: FormData): Prom
     if (r.checked === 0) return { ok: "Everything in range is already checked." };
     const remaining = r.remaining > 0 ? ` ${r.remaining} still pending — run again.` : "";
     return {
-      ok: `Checked ${r.checked} application${r.checked === 1 ? "" : "s"} (${r.passed} pass, ${r.failed} fail) in ${r.apiCalls} API call${r.apiCalls === 1 ? "" : "s"}.${remaining}`,
+      ok: `Checked ${r.checked} application${r.checked === 1 ? "" : "s"} (${r.passed} relevant, ${r.failed} not relevant) in ${r.apiCalls} API call${r.apiCalls === 1 ? "" : "s"}.${remaining}`,
     };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Check failed." };
@@ -41,23 +40,20 @@ export async function runChecksAction(_prev: RunState, formData: FormData): Prom
 
 export type CriteriaState = { ok?: string; error?: string } | undefined;
 
-const WORK_STYLES = ["REMOTE", "HYBRID", "ONSITE", "ANY"];
-
-/** Saves the checking criteria. Changing them marks existing verdicts stale (re-run to apply). */
+/** Saves the target tech stack. Changing it marks existing verdicts stale (re-run to apply). */
 export async function saveCriteriaAction(_prev: CriteriaState, formData: FormData): Promise<CriteriaState> {
   const ctx = await requireTeamAdmin();
 
-  const country = String(formData.get("country") ?? "").trim();
-  const rawStyle = String(formData.get("workStyle") ?? "REMOTE");
-  const workStyle = (WORK_STYLES.includes(rawStyle) ? rawStyle : "REMOTE") as WorkStyle;
-  const jobCategory = String(formData.get("jobCategory") ?? "").trim();
-
-  if (!jobCategory) return { error: "Job category can't be empty." };
+  const techStack = String(formData.get("techStack") ?? "");
+  const stack = parseTechStack(techStack);
+  if (stack.length === 0) return { error: "Enter at least one technology." };
+  if (stack.length > 60) return { error: "That's too many technologies — keep it to the core stack (max 60)." };
+  if (stack.some((t) => t.length > 60)) return { error: "Each technology name must be under 60 characters." };
 
   try {
-    await updateCheckCriteria({ country: country || "ANY", workStyle, jobCategory }, ctx.activeTeamId);
+    await updateCheckCriteria({ techStack }, ctx.activeTeamId);
     revalidatePath("/checks");
-    return { ok: "Criteria saved. Re-run checks to apply them." };
+    return { ok: "Stack saved. Run checks to apply it." };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Save failed." };
   }
