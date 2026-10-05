@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PDFParse } from "pdf-parse";
+import { extractPdfText } from "@/lib/base-resume/extract-text";
 import { renderResumePdf } from "./render-pdf";
 import type { ResumeDocument } from "./build-document";
 
@@ -42,9 +42,7 @@ describe("renderResumePdf", () => {
     const buffer = await renderResumePdf(SAMPLE_DOCUMENT);
     expect(buffer.subarray(0, 5).toString("utf8")).toBe("%PDF-");
 
-    const parser = new PDFParse({ data: buffer });
-    const { text } = await parser.getText();
-    await parser.destroy();
+    const text = await extractPdfText(buffer);
 
     for (const expected of [
       "Jane Doe",
@@ -85,9 +83,7 @@ describe("renderResumePdf", () => {
 
   it("omits empty sections instead of rendering blank headings", async () => {
     const buffer = await renderResumePdf({ ...SAMPLE_DOCUMENT, education: [], summary: null });
-    const parser = new PDFParse({ data: buffer });
-    const { text } = await parser.getText();
-    await parser.destroy();
+    const text = await extractPdfText(buffer);
 
     expect(text).not.toContain("EDUCATION");
     expect(text).not.toContain("SUMMARY");
@@ -104,9 +100,7 @@ describe("renderResumePdf", () => {
         },
       ],
     });
-    const parser = new PDFParse({ data: buffer });
-    const { text } = await parser.getText();
-    await parser.destroy();
+    const text = await extractPdfText(buffer);
 
     // Emphasized keywords render as normal, extractable text...
     for (const kw of ["Kubernetes", "CI/CD pipelines", "payments service", "10k requests/day"]) {
@@ -123,9 +117,7 @@ describe("renderResumePdf (CLASSIC template)", () => {
     const buffer = await renderResumePdf(SAMPLE_DOCUMENT, "classic");
     expect(buffer.subarray(0, 5).toString("utf8")).toBe("%PDF-");
 
-    const parser = new PDFParse({ data: buffer });
-    const { text } = await parser.getText();
-    await parser.destroy();
+    const text = await extractPdfText(buffer);
 
     for (const expected of [
       "JANE DOE", // classic template uppercases the name

@@ -40,9 +40,9 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   // Base-resume import parses uploaded PDF/DOCX files server-side. Both parsers
-  // load their own internals at runtime (pdf-parse bundles pdf.js and its
-  // worker), so they must be required from node_modules rather than bundled.
-  serverExternalPackages: ["pdf-parse", "mammoth"],
+  // load their own internals at runtime (unpdf lazy-loads its bundled pdf.js),
+  // so they are required from node_modules rather than bundled.
+  serverExternalPackages: ["unpdf", "mammoth"],
   experimental: {
     serverActions: {
       // Proof-of-application screenshots are uploaded through a server action
