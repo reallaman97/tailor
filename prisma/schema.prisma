@@ -370,6 +370,9 @@ model Resume {
   @@index([approvalStatus])
   @@index([teamId])
   @@index([invoiceId])
+  // The Applications lists load a recent date range (admin: by team, bidder: by user).
+  @@index([teamId, createdAt])
+  @@index([userId, createdAt])
 }
 
 // ── LLM usage tracking (cost visibility + rate limiting) ──

@@ -40,3 +40,19 @@ export async function archiveScreenshot(data: Buffer): Promise<{ data: Buffer; m
     return null;
   }
 }
+
+/**
+ * Shown in place of a proof screenshot whose image was deleted by the
+ * retention clean-up (src/lib/resumes/retention.ts) — the application still records that proof
+ * was provided.
+ */
+export const REMOVED_PROOF_IMAGE = {
+  mimeType: "image/svg+xml",
+  data: Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="160" viewBox="0 0 480 160">` +
+      `<rect width="480" height="160" rx="12" fill="#f1f5f9"/>` +
+      `<text x="240" y="72" text-anchor="middle" font-family="system-ui,sans-serif" font-size="18" fill="#334155">Proof was uploaded</text>` +
+      `<text x="240" y="100" text-anchor="middle" font-family="system-ui,sans-serif" font-size="14" fill="#64748b">The image was removed to save storage.</text>` +
+      `</svg>`
+  ),
+};

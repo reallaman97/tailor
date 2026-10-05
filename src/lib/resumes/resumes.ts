@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { getAssignedProfileId } from "@/lib/profile/shared";
 import { normalizeJobUrl } from "@/lib/resumes/normalize-url";
-import { archiveScreenshot } from "@/lib/resumes/screenshot-archive";
+import { archiveScreenshot, REMOVED_PROOF_IMAGE } from "@/lib/resumes/screenshot-archive";
 import {
   companyKey,
   jobPostingKey,
@@ -331,6 +331,8 @@ export type ListResumesFilter = {
   roleTrack?: RoleTrack;
   source?: ApplicationSource;
   approvalStatus?: ApprovalStatus;
+  /** Only applications created on or after this — keeps the list (and its DB egress) bounded. */
+  since?: Date;
 };
 
 /**
@@ -348,6 +350,7 @@ export async function listResumes(userId: string, filter: ListResumesFilter = {}
       ...(filter.roleTrack ? { roleTrack: filter.roleTrack } : {}),
       ...(filter.source ? { source: filter.source } : {}),
       ...(filter.approvalStatus ? { approvalStatus: filter.approvalStatus } : {}),
+      ...(filter.since ? { createdAt: { gte: filter.since } } : {}),
     },
     orderBy: { createdAt: "desc" },
     select: SUMMARY_SELECT,
@@ -424,6 +427,8 @@ export async function getScreenshot(
     where: { id: resumeId, ...scope },
     select: { screenshotData: true, screenshotMimeType: true },
   });
-  if (!resume?.screenshotData || !resume.screenshotMimeType) return null;
+  if (!resume?.screenshotMimeType) return null;
+  // Proof was given, but its image was since removed (retention.ts).
+  if (!resume.screenshotData) return REMOVED_PROOF_IMAGE;
   return { data: Buffer.from(resume.screenshotData), mimeType: resume.screenshotMimeType };
 }

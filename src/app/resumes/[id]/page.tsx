@@ -182,7 +182,7 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
           </div>
 
           {!tailoredContent && (
-            <p className="text-sm text-muted-foreground">No tailored resume has been generated for this application yet.</p>
+            <p className="text-sm text-muted-foreground">No tailored resume is available for this application. Generated text is cleared 90 days after applying when the application got no response.</p>
           )}
 
           {tailoredContent && (

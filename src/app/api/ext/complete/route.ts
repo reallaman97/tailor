@@ -50,7 +50,7 @@ async function resolveAuth(user: ExtUser, profileId: string | undefined): Promis
     if (!profileId) {
       return { ok: false, response: NextResponse.json({ error: "Select a profile first" }, { status: 400 }) };
     }
-    return { ok: true, where: { profileId }, fallbackWhere: { profileId, screenshotData: null } };
+    return { ok: true, where: { profileId }, fallbackWhere: { profileId, screenshotMimeType: null } };
   }
 
   const assigned = await getAssignedProfileId(user.id);
@@ -63,7 +63,7 @@ async function resolveAuth(user: ExtUser, profileId: string | undefined): Promis
   const where: Prisma.ResumeWhereInput = assigned
     ? { OR: [{ userId: user.id }, { profileId: assigned }] }
     : { userId: user.id };
-  return { ok: true, where, fallbackWhere: { userId: user.id, screenshotData: null } };
+  return { ok: true, where, fallbackWhere: { userId: user.id, screenshotMimeType: null } };
 }
 
 /** Narrows an auth filter to one application by recorded id, else by posting URL. */

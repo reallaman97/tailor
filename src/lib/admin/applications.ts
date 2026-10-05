@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getProfileNames } from "@/lib/profile/personal-info";
 import type { ResumeDetail } from "@/lib/resumes/resumes";
+import { REMOVED_PROOF_IMAGE } from "@/lib/resumes/screenshot-archive";
 import type {
   ApprovalStatus,
   ResumeStatus,
@@ -33,7 +34,9 @@ export async function getApplicationScreenshot(
     where: { id: resumeId },
     select: { screenshotData: true, screenshotMimeType: true },
   });
-  if (!resume?.screenshotData || !resume.screenshotMimeType) return null;
+  if (!resume?.screenshotMimeType) return null;
+  // Proof was given, but its image was since removed (retention.ts).
+  if (!resume.screenshotData) return REMOVED_PROOF_IMAGE;
   return { data: Buffer.from(resume.screenshotData), mimeType: resume.screenshotMimeType };
 }
 
@@ -130,8 +133,8 @@ export type AdminApplicationDetail = ResumeDetail & {
  * The columns the admin tracker shows. Explicit on purpose: loading whole rows
  * pulled every proof screenshot, job description, and encrypted resume out of
  * the database on each tracker load — gigabytes of egress on Neon's free plan.
- * hasScreenshot comes from screenshotMimeType, which is set exactly when a
- * screenshot is.
+ * hasScreenshot comes from screenshotMimeType, which is set whenever proof was
+ * given (its image may since have been removed — retention.ts).
  */
 const APPLICATION_ROW_SELECT = {
   id: true,
@@ -229,6 +232,8 @@ export type AdminTrackerFilter = {
   profileId?: string;
   /** Scope to one team's applications (multi-tenancy). Omitted = all teams. */
   teamId?: string;
+  /** Only applications created on or after this — keeps the list (and its DB egress) bounded. */
+  since?: Date;
 };
 
 /** The superadmin's view of every user's tracker — default sort is applied date/time newest first. */
@@ -242,6 +247,7 @@ export async function listAllApplications(filter: AdminTrackerFilter = {}): Prom
       ...(filter.userId ? { userId: filter.userId } : {}),
       ...(filter.profileId ? { profileId: filter.profileId } : {}),
       ...(filter.teamId ? { teamId: filter.teamId } : {}),
+      ...(filter.since ? { createdAt: { gte: filter.since } } : {}),
     },
     orderBy: [{ appliedAt: "desc" }, { createdAt: "desc" }],
     select: APPLICATION_ROW_SELECT,
