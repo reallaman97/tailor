@@ -100,7 +100,9 @@ const SUMMARY_SELECT = {
   appliedAt: true,
   createdAt: true,
   updatedAt: true,
-  screenshotData: true,
+  // Whether proof exists, without the image itself: selecting screenshotData
+  // here downloaded every screenshot on every tracker load (GBs of DB egress).
+  screenshotMimeType: true,
   user: { select: { email: true, username: true } },
 } as const;
 
@@ -117,7 +119,7 @@ function toSummary(row: {
   appliedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  screenshotData: Buffer | Uint8Array | null;
+  screenshotMimeType: string | null;
   user: { email: string; username: string };
 }): ResumeSummary {
   return {
@@ -130,7 +132,7 @@ function toSummary(row: {
     roleTrack: row.roleTrack,
     source: row.source,
     approvalStatus: row.approvalStatus,
-    hasScreenshot: row.screenshotData !== null,
+    hasScreenshot: row.screenshotMimeType !== null,
     appliedAt: row.appliedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

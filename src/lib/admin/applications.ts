@@ -126,11 +126,44 @@ export type AdminApplicationDetail = ResumeDetail & {
   profileName: string | null;
 };
 
+/**
+ * The columns the admin tracker shows. Explicit on purpose: loading whole rows
+ * pulled every proof screenshot, job description, and encrypted resume out of
+ * the database on each tracker load — gigabytes of egress on Neon's free plan.
+ * hasScreenshot comes from screenshotMimeType, which is set exactly when a
+ * screenshot is.
+ */
+const APPLICATION_ROW_SELECT = {
+  id: true,
+  profileId: true,
+  companyName: true,
+  jobTitle: true,
+  jobLink: true,
+  statuses: true,
+  roleTrack: true,
+  source: true,
+  approvalStatus: true,
+  screenshotMimeType: true,
+  createdAt: true,
+  updatedAt: true,
+  appliedAt: true,
+  user: { select: { id: true, email: true, username: true } },
+} as const;
+
 /** Fetches one application by id regardless of owner — for a superadmin viewing any user's tracker entry. */
 export async function getApplicationDetail(resumeId: string): Promise<AdminApplicationDetail | null> {
   const resume = await db.resume.findUnique({
     where: { id: resumeId },
-    include: { user: { select: { id: true, email: true, username: true } } },
+    // Never the screenshot bytes — see APPLICATION_ROW_SELECT.
+    select: {
+      ...APPLICATION_ROW_SELECT,
+      jobDescription: true,
+      notes: true,
+      generatedAt: true,
+      approvedAt: true,
+      modelUsed: true,
+      tailoredContentEnc: true,
+    },
   });
   if (!resume) return null;
 
@@ -147,7 +180,7 @@ export async function getApplicationDetail(resumeId: string): Promise<AdminAppli
     roleTrack: resume.roleTrack,
     source: resume.source,
     approvalStatus: resume.approvalStatus,
-    hasScreenshot: resume.screenshotData !== null,
+    hasScreenshot: resume.screenshotMimeType !== null,
     createdAt: resume.createdAt,
     updatedAt: resume.updatedAt,
     jobDescription: resume.jobDescription,
@@ -211,7 +244,7 @@ export async function listAllApplications(filter: AdminTrackerFilter = {}): Prom
       ...(filter.teamId ? { teamId: filter.teamId } : {}),
     },
     orderBy: [{ appliedAt: "desc" }, { createdAt: "desc" }],
-    include: { user: { select: { id: true, email: true, username: true } } },
+    select: APPLICATION_ROW_SELECT,
   });
 
   const profileIds = [...new Set(resumes.map((r) => r.profileId).filter((id): id is string => id !== null))];
@@ -231,7 +264,7 @@ export async function listAllApplications(filter: AdminTrackerFilter = {}): Prom
     roleTrack: r.roleTrack,
     source: r.source,
     approvalStatus: r.approvalStatus,
-    hasScreenshot: r.screenshotData !== null,
+    hasScreenshot: r.screenshotMimeType !== null,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     appliedAt: r.appliedAt,
