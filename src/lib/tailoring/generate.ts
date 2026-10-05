@@ -57,6 +57,12 @@ export class InvalidModelOutputError extends Error {
   }
 }
 
+export class GenerationStoppedError extends Error {
+  constructor() {
+    super("Generation stopped.");
+  }
+}
+
 /**
  * The user message for a generation, plus the real work-history id behind
  * each short role id ("r1" → entryIds[0]).
@@ -155,7 +161,7 @@ export type TailoringResult = {
 export async function generateTailoredContent(
   resumeFields: ResumeFields,
   jobDescription: string,
-  options: { model: string }
+  options: { model: string; /** Aborts the in-flight DeepSeek request (user stopped the build). */ signal?: AbortSignal }
 ): Promise<TailoringResult> {
   const systemPrompt = getResumePrompt();
   const client = createDeepSeekClient(REQUEST_TIMEOUT_MS);
@@ -193,8 +199,9 @@ export async function generateTailoredContent(
     const params = (attempt === 1 ? { ...base, response_format: { type: "json_object" } } : base) as OpenAI.ChatCompletionCreateParamsNonStreaming;
     let completion: OpenAI.ChatCompletion;
     try {
-      completion = await client.chat.completions.create(params);
+      completion = await client.chat.completions.create(params, { signal: options.signal });
     } catch (err) {
+      if (options.signal?.aborted) throw new GenerationStoppedError();
       throw toFriendlyDeepSeekError(err);
     }
 

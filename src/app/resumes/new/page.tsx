@@ -41,6 +41,8 @@ async function loadWorkspace(user: { id: string }, isSuperAdmin: boolean, appId:
     jobTitle: app.jobTitle,
     jobLink: app.jobLink,
     hasScreenshot: app.hasScreenshot,
+    canceled: app.statuses.includes("CANCELED"),
+    canCancel: !app.statuses.includes("CANCELED") && (isSuperAdmin || !app.hasScreenshot),
     candidateName: app.profileId ? (names.get(app.profileId) ?? null) : null,
   };
   return { app: workspaceApp, assist };

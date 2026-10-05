@@ -1,26 +1,19 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
 import { requireResumePlatformAccess } from "@/lib/auth/require-user";
 import { createResumeSchema } from "@/lib/resumes/schemas";
 import { createResume, DuplicateApplicationError } from "@/lib/resumes/resumes";
-import { classifyRoleTrack } from "@/lib/resumes/classify-role-track";
-import { tailorResume, ProfileIncompleteError } from "@/lib/tailoring/tailor-resume";
-import { readResumeValues, type NewResumeState } from "./shared";
+import type { CreateApplicationResult } from "./shared";
 
 /**
  * A normal user applying for a job: status and source are always set
  * automatically (APPLIED / Job Board) — only a superadmin can change either
- * afterward. Role track is never taken from the client; it's AI-classified here.
- * The tailored resume is generated right here as part of "building" it.
+ * afterward. Role track is never taken from the client; it's AI-classified
+ * during the build. Creates the application only (duplicate check first, so a
+ * duplicate costs nothing); the page then builds it via /api/resumes/[id]/build.
  */
-export async function createResumeAction(
-  _prevState: NewResumeState,
-  formData: FormData
-): Promise<NewResumeState> {
+export async function createResumeAction(formData: FormData): Promise<CreateApplicationResult> {
   const user = await requireResumePlatformAccess();
-  const values = readResumeValues(formData);
 
   const parsed = createResumeSchema.safeParse({
     jobLink: formData.get("jobLink"),
@@ -28,50 +21,18 @@ export async function createResumeAction(
     jobTitle: formData.get("jobTitle"),
     jobDescription: formData.get("jobDescription"),
   });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input", values };
-  }
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
-  let resumeId: string;
   try {
-    resumeId = await createResume(user.id, {
+    const createdId = await createResume(user.id, {
       ...parsed.data,
-      // Classified concurrently with tailoring below (best-effort); starts at OTHER.
-      roleTrack: "OTHER",
+      roleTrack: "OTHER", // classified during the build
       source: "JOB_BOARD",
       status: "APPLIED",
     });
+    return { createdId };
   } catch (err) {
-    if (err instanceof DuplicateApplicationError)
-      return { error: err.message, values, duplicateId: err.existing.id };
+    if (err instanceof DuplicateApplicationError) return { error: err.message, duplicateId: err.existing.id };
     throw err;
   }
-
-  // The slow OpenAI tailoring call and the (best-effort) role-track
-  // classification run concurrently instead of back-to-back — this removes a
-  // second sequential LLM round trip from the user's wait. If tailoring fails,
-  // roll the application back out of the tracker so a failed build records
-  // nothing — the user just fixes it and retries.
-  try {
-    await Promise.all([
-      tailorResume(user.id, resumeId),
-      classifyRoleTrack(parsed.data.jobTitle, parsed.data.jobDescription)
-        .then((roleTrack) =>
-          roleTrack !== "OTHER" ? db.resume.update({ where: { id: resumeId }, data: { roleTrack } }) : null
-        )
-        .catch(() => {}),
-    ]);
-  } catch (err) {
-    await db.resume.delete({ where: { id: resumeId } }).catch(() => {});
-    if (err instanceof ProfileIncompleteError) {
-      return { error: err.message, values };
-    }
-    console.error("Resume tailoring failed:", err);
-    const detail = err instanceof Error ? err.message : "unknown error";
-    return { error: `Tailoring failed: ${detail}`, values };
-  }
-
-  revalidatePath("/resumes");
-  revalidatePath("/dashboard");
-  return { resumeId };
 }

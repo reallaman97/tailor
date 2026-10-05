@@ -112,7 +112,7 @@ export function sanitizeTailoredContent(
   };
 }
 
-export async function tailorResume(userId: string, resumeId: string): Promise<void> {
+export async function tailorResume(userId: string, resumeId: string, signal?: AbortSignal): Promise<void> {
   const resume = await getResume(userId, resumeId);
   if (!resume) throw new ResumeNotFoundError();
 
@@ -142,6 +142,7 @@ export async function tailorResume(userId: string, resumeId: string): Promise<vo
   const settings = await getSettings(teamId);
   const result = await generateTailoredContent(resumeFields, resume.jobDescription, {
     model: settings.resumeModel,
+    signal,
   });
 
   const allowedEntryIds = new Set(resumeFields.workHistory.map((w) => w.id));

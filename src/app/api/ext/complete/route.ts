@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { hasTeamAdminPower } from "@/lib/auth/roles";
 import { db } from "@/lib/db";
+import { archiveScreenshot } from "@/lib/resumes/screenshot-archive";
 import { getExtUser, type ExtUser } from "@/lib/ext/session";
 import { getAssignedProfileId } from "@/lib/profile/shared";
 import { normalizeJobUrl } from "@/lib/resumes/normalize-url";
@@ -166,11 +167,12 @@ export async function POST(request: Request) {
   // The resume was already authorized above (via `where`/`targetWhere`), so write
   // the proof directly — uploading proof always resets approval to PENDING for
   // superadmin re-review, matching the web upload.
+  const stored = (await archiveScreenshot(parsed.data)) ?? parsed;
   await db.resume.update({
     where: { id: resume.id },
     data: {
-      screenshotData: new Uint8Array(parsed.data),
-      screenshotMimeType: parsed.mimeType,
+      screenshotData: new Uint8Array(stored.data),
+      screenshotMimeType: stored.mimeType,
       approvalStatus: "PENDING",
       approvedAt: null,
     },

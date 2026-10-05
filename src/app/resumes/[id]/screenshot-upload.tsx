@@ -189,6 +189,7 @@ export function ScreenshotUpload({
           <span className="text-xs">
             Click, drop an image here{capturePaste ? ", or paste it with Ctrl+V" : ""} · PNG, JPEG, or WEBP
           </span>
+          <span className="text-xs">Saved as a compact grayscale copy — make sure the confirmation is visible.</span>
           <input
             id={inputId}
             type="file"

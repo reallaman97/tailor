@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { useElapsedSeconds } from "@/lib/use-elapsed-seconds";
+import { Button } from "@/components/ui/button";
 
 // The phases the resume prompt works through. The model reports no progress
 // mid-call, so these advance on elapsed time as an honest estimate of where a
@@ -16,13 +17,24 @@ const STAGES: { at: number; label: string }[] = [
 
 const SLOW_AFTER_SECONDS = 150;
 
-/** Stage-by-stage progress for an in-flight resume generation. Render while the build is pending. */
-export function GenerationProgress({ active }: { active: boolean }) {
+/**
+ * Stage-by-stage progress for an in-flight resume generation. Render while the
+ * build is pending. `onStop` (shown once generation has started) cancels it.
+ */
+export function GenerationProgress({
+  active,
+  onStop,
+  stopping = false,
+}: {
+  active: boolean;
+  onStop?: () => void;
+  stopping?: boolean;
+}) {
   // Mounting the panel per run restarts its timer from zero.
-  return active ? <RunningPanel /> : null;
+  return active ? <RunningPanel onStop={onStop} stopping={stopping} /> : null;
 }
 
-function RunningPanel() {
+function RunningPanel({ onStop, stopping }: { onStop?: () => void; stopping: boolean }) {
   const seconds = useElapsedSeconds();
   const current = STAGES.reduce((idx, stage, i) => (seconds >= stage.at ? i : idx), 0);
   // Approaches but never reaches 100% — completion is signalled by the result, not the bar.
@@ -58,11 +70,20 @@ function RunningPanel() {
         ))}
       </ol>
 
-      <p className="text-xs text-muted-foreground">
-        {seconds >= SLOW_AFTER_SECONDS
-          ? "Taking longer than usual — still working. Please keep this tab open."
-          : "This usually takes 1–2 minutes. Please keep this tab open."}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          {stopping
+            ? "Stopping…"
+            : seconds >= SLOW_AFTER_SECONDS
+              ? "Taking longer than usual — still working. Please keep this tab open."
+              : "This usually takes 1–2 minutes. Please keep this tab open."}
+        </p>
+        {onStop && (
+          <Button type="button" variant="outline" size="sm" onClick={onStop} loading={stopping} disabled={stopping}>
+            Stop generation
+          </Button>
+        )}
+      </div>
     </div>
   );
 }

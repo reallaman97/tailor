@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getAssignedProfileId } from "@/lib/profile/shared";
 import { normalizeJobUrl } from "@/lib/resumes/normalize-url";
+import { archiveScreenshot } from "@/lib/resumes/screenshot-archive";
 import {
   companyKey,
   jobPostingKey,
@@ -157,6 +158,8 @@ export type DuplicateScope = { profileId: string } | { userId: string; profileId
 // duplicates (the exact keys above are indexed and cover all history).
 const NEAR_DUPLICATE_WINDOW = 300;
 
+const NOT_CANCELED = { NOT: { statuses: { has: "CANCELED" as const } } };
+
 /**
  * The thorough duplicate check, run before anything costs tokens. Scoped to a
  * candidate (profile) — several accounts can share one, and different
@@ -167,6 +170,7 @@ const NEAR_DUPLICATE_WINDOW = 300;
  *     the same job re-posted by a recruiter under a different company name).
  * Any field may be missing (e.g. the extension knows only the link and text
  * before it extracts the company) — absent fields just skip their rule.
+ * Canceled applications never count: canceling one frees the company again.
  */
 export async function findDuplicateApplication(
   scope: DuplicateScope,
@@ -180,6 +184,7 @@ export async function findDuplicateApplication(
   const exact = await db.resume.findMany({
     where: {
       ...scope,
+      ...NOT_CANCELED,
       OR: [
         ...(company ? [{ companyKey: company }] : []),
         ...(posting ? [{ jobKey: posting }] : []),
@@ -208,7 +213,7 @@ export async function findDuplicateApplication(
   const candidate = shingles(input.jobDescription);
   if (candidate.size < 20) return null;
   const recent = await db.resume.findMany({
-    where: scope,
+    where: { ...scope, ...NOT_CANCELED },
     orderBy: { createdAt: "desc" },
     take: NEAR_DUPLICATE_WINDOW,
     select: { id: true, companyName: true, jobTitle: true, jobDescription: true },
@@ -395,11 +400,12 @@ export async function uploadScreenshot(
   }
 
   const scope = await scopeFilter(userId);
+  const stored = (await archiveScreenshot(data)) ?? { data, mimeType };
   const result = await db.resume.updateMany({
     where: { id: resumeId, ...scope },
     data: {
-      screenshotData: new Uint8Array(data),
-      screenshotMimeType: mimeType,
+      screenshotData: new Uint8Array(stored.data),
+      screenshotMimeType: stored.mimeType,
       approvalStatus: "PENDING",
       approvedAt: null,
     },

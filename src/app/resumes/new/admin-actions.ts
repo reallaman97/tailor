@@ -1,13 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { requireSuperAdmin } from "@/lib/auth/require-user";
 import { db } from "@/lib/db";
 import { createResumeSchema, applicationSourceSchema } from "@/lib/resumes/schemas";
 import { createResume, DuplicateApplicationError } from "@/lib/resumes/resumes";
-import { classifyRoleTrack } from "@/lib/resumes/classify-role-track";
-import { tailorResume, ProfileIncompleteError } from "@/lib/tailoring/tailor-resume";
-import { readResumeValues, type NewResumeState, type NewResumeValues } from "./shared";
+import type { CreateApplicationResult } from "./shared";
 
 /**
  * A superadmin building on behalf of a candidate: they pick which profile to
@@ -15,24 +12,19 @@ import { readResumeValues, type NewResumeState, type NewResumeValues } from "./s
  * profile), and choose the source explicitly rather than it defaulting to
  * Job Board. The resulting application is attributed to that profile's
  * earliest-registered assigned account, so it shows up in the shared
- * tracker rather than the superadmin's own.
+ * tracker rather than the superadmin's own. Creates the application only; the
+ * page then builds it via /api/resumes/[id]/build.
  */
-export async function createResumeAsAdminAction(
-  _prevState: NewResumeState,
-  formData: FormData
-): Promise<NewResumeState> {
+export async function createResumeAsAdminAction(formData: FormData): Promise<CreateApplicationResult> {
   await requireSuperAdmin();
-  const values = readResumeValues(formData);
 
   const profileId = formData.get("profileId");
   if (typeof profileId !== "string" || profileId.trim() === "") {
-    return { error: "Select a profile to build this resume for", values };
+    return { error: "Select a profile to build this resume for" };
   }
 
   const sourceParsed = applicationSourceSchema.safeParse(formData.get("source"));
-  if (!sourceParsed.success) {
-    return { error: "Select a source", values };
-  }
+  if (!sourceParsed.success) return { error: "Select a source" };
 
   const parsed = createResumeSchema.safeParse({
     jobLink: formData.get("jobLink"),
@@ -40,68 +32,26 @@ export async function createResumeAsAdminAction(
     jobTitle: formData.get("jobTitle"),
     jobDescription: formData.get("jobDescription"),
   });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Invalid input", values };
-  }
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
 
   const targetUser = await db.user.findFirst({
     where: { profileId },
     orderBy: { email: "asc" },
     select: { id: true },
   });
-  if (!targetUser) {
-    return { error: "That profile has no assigned account to build for", values };
-  }
+  if (!targetUser) return { error: "That profile has no assigned account to build for" };
 
-  // Create first: the duplicate check inside createResume must run before ANY
-  // AI call (role-track classification included), so a duplicate costs nothing.
-  let resumeId: string;
+  // The duplicate check inside createResume runs before ANY AI call, so a duplicate costs nothing.
   try {
-    resumeId = await createResume(targetUser.id, {
+    const createdId = await createResume(targetUser.id, {
       ...parsed.data,
-      roleTrack: "OTHER", // classified below, concurrently with tailoring
+      roleTrack: "OTHER", // classified during the build
       source: sourceParsed.data,
       status: "APPLIED",
     });
+    return { createdId };
   } catch (err) {
-    if (err instanceof DuplicateApplicationError)
-      return { error: err.message, values, duplicateId: err.existing.id };
+    if (err instanceof DuplicateApplicationError) return { error: err.message, duplicateId: err.existing.id };
     throw err;
   }
-
-  // Build the tailored resume for the profile's account right away.
-  return tailorAndFinish(targetUser.id, resumeId, values, parsed.data);
-}
-
-/**
- * Tailors a just-created application, classifying its role track concurrently
- * (best-effort); on tailoring failure rolls the application back so nothing is
- * recorded.
- */
-async function tailorAndFinish(
-  ownerUserId: string,
-  resumeId: string,
-  values: NewResumeValues,
-  job: { jobTitle: string; jobDescription: string }
-): Promise<NewResumeState> {
-  try {
-    await Promise.all([
-      tailorResume(ownerUserId, resumeId),
-      classifyRoleTrack(job.jobTitle, job.jobDescription)
-        .then((roleTrack) => (roleTrack !== "OTHER" ? db.resume.update({ where: { id: resumeId }, data: { roleTrack } }) : null))
-        .catch(() => {}),
-    ]);
-  } catch (err) {
-    await db.resume.delete({ where: { id: resumeId } }).catch(() => {});
-    if (err instanceof ProfileIncompleteError) {
-      return { error: err.message, values };
-    }
-    console.error("Resume tailoring failed:", err);
-    const detail = err instanceof Error ? err.message : "unknown error";
-    return { error: `Tailoring failed: ${detail}`, values };
-  }
-
-  revalidatePath("/resumes");
-  revalidatePath("/dashboard");
-  return { resumeId };
 }

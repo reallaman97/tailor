@@ -37,6 +37,7 @@ export function ConfirmDialog({
   description,
   confirmLabel = "Delete",
   confirmVariant = "destructive",
+  dismissLabel = "Cancel",
   action,
 }: {
   triggerContent: React.ReactNode;
@@ -48,6 +49,8 @@ export function ConfirmDialog({
   description: string;
   confirmLabel?: string;
   confirmVariant?: ButtonProps["variant"];
+  /** The button that closes the dialog without acting. */
+  dismissLabel?: string;
   action: (formData: FormData) => void | Promise<void>;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -88,7 +91,7 @@ export function ConfirmDialog({
         </div>
         <div className="flex items-center justify-end gap-3 border-t border-border p-4">
           <Button type="button" variant="secondary" onClick={() => dialogRef.current?.close()}>
-            Cancel
+            {dismissLabel}
           </Button>
           <form action={action}>
             <ConfirmSubmitButton confirmLabel={confirmLabel} variant={confirmVariant} />

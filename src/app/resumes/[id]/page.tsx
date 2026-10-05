@@ -27,6 +27,7 @@ import { getInterviewTimezone } from "@/lib/settings";
 import { formatInterviewTime } from "@/lib/interview/timezone";
 import { ExternalLinkIcon, DownloadIcon } from "@/components/icons";
 import type { ResumeStatus } from "@/generated/prisma/client";
+import { CancelApplicationButton } from "./cancel-application-button";
 
 const DAY_MS = 86_400_000;
 
@@ -132,9 +133,15 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
               )}
             </div>
           </div>
-          <Link href="/resumes" className="shrink-0 text-sm text-muted-foreground hover:text-foreground hover:underline">
-            Back to applications
-          </Link>
+          <div className="flex shrink-0 items-center gap-3">
+            {/* Bidders can cancel until proof is uploaded (it wasn't submitted yet); admins any time. */}
+            {!resume.statuses.includes("CANCELED") && (isSuperAdmin || !resume.hasScreenshot) && (
+              <CancelApplicationButton resumeId={resume.id} companyName={resume.companyName} />
+            )}
+            <Link href="/resumes" className="text-sm text-muted-foreground hover:text-foreground hover:underline">
+              Back to applications
+            </Link>
+          </div>
         </div>
 
         {/* Resume Builder — the job description and the tailored resume generated for it. */}

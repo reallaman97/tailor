@@ -2,6 +2,7 @@ import Link from "next/link";
 import { CoverLetterCard } from "@/app/resumes/[id]/cover-letter-card";
 import { AskAiCard } from "@/app/resumes/[id]/ask-ai-card";
 import { ScreenshotUpload } from "@/app/resumes/[id]/screenshot-upload";
+import { CancelApplicationButton } from "@/app/resumes/[id]/cancel-application-button";
 import type { AssistData } from "@/lib/assist/store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,9 @@ export type WorkspaceApplication = {
   jobTitle: string;
   jobLink: string | null;
   hasScreenshot: boolean;
+  canceled: boolean;
+  /** Not canceled yet, and either the viewer is an admin or no proof is uploaded (it wasn't submitted). */
+  canCancel: boolean;
   /** Who it was built for — shown to admins building on someone's behalf. */
   candidateName: string | null;
 };
@@ -45,10 +49,14 @@ export function ApplicationWorkspace({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex flex-col gap-1">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="success">
-                  <CheckCircleIcon className="mr-1 size-3.5" />
-                  Resume ready
-                </Badge>
+                {app.canceled ? (
+                  <Badge variant="warning">Canceled</Badge>
+                ) : (
+                  <Badge variant="success">
+                    <CheckCircleIcon className="mr-1 size-3.5" />
+                    Resume ready
+                  </Badge>
+                )}
                 {app.candidateName && <Badge variant="outline">For {app.candidateName}</Badge>}
               </div>
               <h2 className="text-lg font-semibold text-foreground">
@@ -81,6 +89,11 @@ export function ApplicationWorkspace({
             <Link href={`/resumes/${app.id}`} className={buttonVariants("ghost", "sm")}>
               Application details
             </Link>
+            {app.canCancel && (
+              <div className="ml-auto">
+                <CancelApplicationButton resumeId={app.id} companyName={app.companyName} />
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -101,7 +114,9 @@ export function ApplicationWorkspace({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {canUploadProof ? (
+              {app.canceled ? (
+                <p className="text-sm text-muted-foreground">This application was canceled, so no proof is needed.</p>
+              ) : canUploadProof ? (
                 <ScreenshotUpload resumeId={app.id} hasScreenshot={app.hasScreenshot} capturePaste />
               ) : (
                 <p className="text-sm text-muted-foreground">
