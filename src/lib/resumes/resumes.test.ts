@@ -7,10 +7,9 @@ import {
   createResume,
   listResumes,
   getResume,
-  uploadScreenshot,
+  markProofSubmitted,
   getScreenshot,
   DuplicateApplicationError,
-  InvalidScreenshotError,
 } from "@/lib/resumes/resumes";
 
 describe("resumes (integration)", () => {
@@ -220,7 +219,7 @@ describe("resumes (integration)", () => {
     }
   });
 
-  it("uploads a screenshot, resets approval to PENDING, and serves it back only within the same scope", async () => {
+  it("records proof without storing an image, resets approval to PENDING, and is visible only within the same scope", async () => {
     const id = await createResume(userId, {
       jobLink: undefined,
       companyName: "Screenshot Co",
@@ -228,32 +227,19 @@ describe("resumes (integration)", () => {
       jobDescription: "A description that is definitely long enough to pass validation.",
     });
 
-    const png = Buffer.from("fake-png-bytes");
-    await uploadScreenshot(userId, id, png, "image/png");
+    await markProofSubmitted(userId, id);
 
     const detail = await getResume(userId, id);
     expect(detail?.hasScreenshot).toBe(true);
     expect(detail?.approvalStatus).toBe("PENDING");
+    const row = await db.resume.findUniqueOrThrow({ where: { id }, select: { screenshotData: true } });
+    expect(row.screenshotData).toBeNull();
 
-    const fetched = await getScreenshot(userId, id);
-    expect(fetched?.mimeType).toBe("image/png");
-    expect(fetched?.data.toString()).toBe("fake-png-bytes");
+    // No image to serve — just the placeholder.
+    expect((await getScreenshot(userId, id))?.mimeType).toBe("image/svg+xml");
 
     // No shared profile with this user — no screenshot returned.
     expect(await getScreenshot(otherUserId, id)).toBeNull();
-  });
-
-  it("rejects an unsupported screenshot file type", async () => {
-    const id = await createResume(userId, {
-      jobLink: undefined,
-      companyName: "Bad Upload Co",
-      jobTitle: "Engineer",
-      jobDescription: "A description that is definitely long enough to pass validation.",
-    });
-
-    await expect(uploadScreenshot(userId, id, Buffer.from("not-an-image"), "text/plain")).rejects.toThrow(
-      InvalidScreenshotError
-    );
   });
 
   it("does not allow a user with no shared profile to read another user's resume", async () => {
@@ -300,9 +286,8 @@ describe("resumes (integration)", () => {
         expect(listForA.some((r) => r.id === id)).toBe(true);
 
         // Teammate B can upload proof for an entry teammate A created.
-        await uploadScreenshot(teammateBId, id, Buffer.from("teammate-b-upload"), "image/png");
-        const shot = await getScreenshot(teammateAId, id);
-        expect(shot?.data.toString()).toBe("teammate-b-upload");
+        await markProofSubmitted(teammateBId, id);
+        expect((await getResume(teammateAId, id))?.hasScreenshot).toBe(true);
 
         // Teammate B independently logging the exact same job is caught as a
         // duplicate against teammate A's entry, since they share a profile.

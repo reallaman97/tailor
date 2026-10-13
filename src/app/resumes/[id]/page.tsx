@@ -329,7 +329,6 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
               />
             ) : (
               <ApprovalStatusCell
-                resumeId={resume.id}
                 approvalStatus={resume.approvalStatus}
                 hasScreenshot={resume.hasScreenshot}
               />
@@ -401,7 +400,11 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
               {!isOwnResume && <CardDescription>Proof of application uploaded by this user.</CardDescription>}
             </CardHeader>
             <CardContent>
-              {resume.hasScreenshot ? (
+              {resume.hasScreenshot && !isSuperAdmin ? (
+                // Screenshots aren't stored any more (markProofSubmitted) — the
+                // bidder just sees that their proof is in.
+                <p className="text-sm text-foreground">Screenshot uploaded — pending admin review.</p>
+              ) : resume.hasScreenshot ? (
                 // eslint-disable-next-line @next/next/no-img-element -- authenticated, per-application binary served from our own route, not a static/optimizable asset
                 <img
                   src={`/api/resumes/${resume.id}/screenshot`}

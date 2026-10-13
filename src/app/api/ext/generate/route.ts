@@ -8,7 +8,7 @@ import { getProfileNames } from "@/lib/profile/personal-info";
 import {
   createResume,
   DuplicateApplicationError,
-  uploadScreenshot,
+  markProofSubmitted,
   findDuplicateApplication,
   duplicateScope,
   duplicateMessage,
@@ -173,18 +173,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: detail }, { status: 502 });
   }
 
-  // Store the proof-of-application screenshot (same record as the web upload).
-  // Best-effort: a bad/oversized image must not throw away a successful build.
+  // Proof of application: record that it was submitted, like the web upload —
+  // the image itself isn't stored (see markProofSubmitted). Best-effort: it
+  // must not throw away a successful build.
   let proofSaved = false;
-  if (body.screenshot) {
-    const parsed = parseScreenshot(body.screenshot);
-    if (parsed) {
-      try {
-        await uploadScreenshot(ownerUserId, resumeId, parsed.data, parsed.mimeType);
-        proofSaved = true;
-      } catch {
-        // ignore — the application is still recorded, just without proof
-      }
+  if (body.screenshot && parseScreenshot(body.screenshot)) {
+    try {
+      await markProofSubmitted(ownerUserId, resumeId);
+      proofSaved = true;
+    } catch {
+      // ignore — the application is still recorded, just without proof
     }
   }
 

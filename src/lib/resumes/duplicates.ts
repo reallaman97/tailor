@@ -186,3 +186,51 @@ export function similarity(a: Set<number>, b: Set<number>): number {
  * level, even from one company, share far less 5-word phrasing.
  */
 export const NEAR_DUPLICATE_THRESHOLD = 0.8;
+
+/**
+ * MinHash signature length. The fraction of positions where two signatures
+ * agree estimates the Jaccard similarity of the two shingle sets — with 128,
+ * to within about ±0.035 near the 0.8 threshold.
+ */
+export const MINHASH_SIZE = 128;
+
+/** A 32-bit integer mix (murmur3's finalizer), seeded per signature position. */
+function mix32(x: number, seed: number): number {
+  let h = (x ^ seed) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+const MINHASH_SEEDS = Array.from({ length: MINHASH_SIZE }, (_, i) => mix32(i + 1, 0x9e3779b9));
+
+/**
+ * The description's MinHash signature, stored with each application so the
+ * near-duplicate check can compare in the database (a few hundred bytes per
+ * application) instead of downloading recent descriptions to compare here.
+ * Empty when the description is too short to compare meaningfully. Values are
+ * signed 32-bit, to fit a Postgres int4[].
+ */
+export function jdMinhash(text: string): number[] {
+  const set = shingles(text);
+  if (set.size < MIN_SHINGLES_TO_COMPARE) return [];
+  const sig = new Array<number>(MINHASH_SIZE).fill(0xffffffff);
+  for (const x of set) {
+    for (let i = 0; i < MINHASH_SIZE; i++) {
+      const h = mix32(x, MINHASH_SEEDS[i]);
+      if (h < sig[i]) sig[i] = h;
+    }
+  }
+  return sig.map((v) => v | 0);
+}
+
+/** Below this many 5-word shingles a description is too short for the near-duplicate check. */
+export const MIN_SHINGLES_TO_COMPARE = 20;
+
+/** Estimated Jaccard similarity of two MinHash signatures (0–1). */
+export function minhashSimilarity(a: number[], b: number[]): number {
+  if (a.length !== MINHASH_SIZE || b.length !== MINHASH_SIZE) return 0;
+  let same = 0;
+  for (let i = 0; i < MINHASH_SIZE; i++) if (a[i] === b[i]) same++;
+  return same / MINHASH_SIZE;
+}

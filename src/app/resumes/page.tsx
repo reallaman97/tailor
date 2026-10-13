@@ -18,8 +18,8 @@ export default async function ResumesPage({ searchParams }: { searchParams: Prom
   const isSuperAdmin = hasTeamAdminPower(user.role);
 
   if (isSuperAdmin) {
-    // The whole team's applications: default to a week (thousands a month).
-    const { range, since } = resolveListRange(rangeParam, "7");
+    // The whole team's applications: default to a day (thousands a month).
+    const { range, since } = resolveListRange(rangeParam, "1");
     const ctx = await getTeamContext();
     const applications = await listAllApplications({ teamId: ctx?.activeTeamId ?? undefined, since });
 

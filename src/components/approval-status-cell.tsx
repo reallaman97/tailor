@@ -22,11 +22,9 @@ const ESTIMATED_PANEL_HEIGHT = 210;
  * an invisible sliver when nested inside one.
  */
 export function ApprovalStatusCell({
-  resumeId,
   approvalStatus,
   hasScreenshot,
 }: {
-  resumeId: string;
   approvalStatus: ApprovalStatus;
   hasScreenshot: boolean;
 }) {
@@ -88,12 +86,9 @@ export function ApprovalStatusCell({
             className="z-50 w-56 rounded-md border border-border bg-card p-2 shadow-lg"
           >
             {hasScreenshot ? (
-              // eslint-disable-next-line @next/next/no-img-element -- authenticated, per-application binary served from our own route, not a static/optimizable asset
-              <img
-                src={`/api/resumes/${resumeId}/screenshot`}
-                alt="Uploaded proof of application"
-                className="max-h-48 w-full rounded object-contain"
-              />
+              // Screenshots aren't stored any more (markProofSubmitted), so
+              // there's no image to preview — just confirm it's in.
+              <p className="py-2 text-center text-xs text-foreground">Screenshot uploaded</p>
             ) : (
               <p className="py-2 text-center text-xs text-muted-foreground">No screenshot uploaded</p>
             )}

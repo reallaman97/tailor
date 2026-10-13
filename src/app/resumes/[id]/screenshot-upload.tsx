@@ -1,39 +1,13 @@
 "use client";
 
 import { useEffect, useEffectEvent, useId, useRef, useState, useTransition } from "react";
-import { uploadScreenshotAction } from "./actions";
+import { markProofSubmittedAction } from "./actions";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/alert";
 import { UploadIcon, CheckCircleIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 
 const ACCEPTED = ["image/png", "image/jpeg", "image/webp"];
-// The server accepts up to 4.5MB; stay under it with headroom for the request envelope.
-const TARGET_BYTES = 4 * 1024 * 1024;
-const MAX_EDGE_PX = 2400;
-
-/**
- * Full-page screenshots are often far larger than needed. If an image is over
- * the upload budget, re-encode it as JPEG (scaled so its longest edge is at
- * most MAX_EDGE_PX) — readable for review, and it always fits.
- */
-async function fitForUpload(file: File): Promise<File> {
-  if (file.size <= TARGET_BYTES) return file;
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_EDGE_PX / Math.max(bitmap.width, bitmap.height));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(bitmap.width * scale);
-  canvas.height = Math.round(bitmap.height * scale);
-  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-  bitmap.close();
-  for (const quality of [0.85, 0.7, 0.55]) {
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-    if (blob && blob.size <= TARGET_BYTES) {
-      return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" });
-    }
-  }
-  return file; // let the server report it as too large
-}
 
 function formatSize(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -60,8 +34,6 @@ export function ScreenshotUpload({
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [uploaded, setUploaded] = useState(initiallyUploaded);
-  // Bumped after each upload so the shown image isn't a stale cached copy.
-  const [version, setVersion] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -120,18 +92,18 @@ export function ScreenshotUpload({
     setPreviewUrl(null);
   }
 
+  // Screenshots aren't stored (see markProofSubmitted): "uploading" records
+  // that proof was submitted, and the chosen image never leaves this device —
+  // its local preview is shown as the uploaded one for the rest of the visit.
   function upload() {
     if (!file) return;
     setError(null);
     startUpload(async () => {
       try {
-        const body = new FormData();
-        body.set("screenshot", await fitForUpload(file));
-        const result = await uploadScreenshotAction(resumeId, undefined, body);
+        const result = await markProofSubmittedAction(resumeId);
         if (result?.error) return setError(result.error);
-        clearSelection();
+        setFile(null); // keeps `preview`, now shown as the uploaded image
         setUploaded(true);
-        setVersion(Date.now());
         setSuccess(true);
         onUploaded?.();
       } catch {
@@ -142,14 +114,21 @@ export function ScreenshotUpload({
 
   return (
     <div className="flex flex-col gap-3">
-      {uploaded && !file && (
-        // eslint-disable-next-line @next/next/no-img-element -- authenticated, per-application binary served from our own route, not a static/optimizable asset
-        <img
-          src={`/api/resumes/${resumeId}/screenshot${version ? `?v=${version}` : ""}`}
-          alt="Uploaded proof of application"
-          className="max-h-72 w-auto self-start rounded-md border border-border object-contain"
-        />
-      )}
+      {uploaded &&
+        !file &&
+        (preview ? (
+          // eslint-disable-next-line @next/next/no-img-element -- local object-URL of the image just submitted
+          <img
+            src={preview}
+            alt="Uploaded proof of application"
+            className="max-h-72 w-auto self-start rounded-md border border-border object-contain"
+          />
+        ) : (
+          <div className="flex items-center gap-2 self-start rounded-md border border-border bg-muted/30 px-3 py-2 text-sm text-foreground">
+            <CheckCircleIcon className="size-4 text-success" />
+            Screenshot uploaded
+          </div>
+        ))}
 
       {file && preview ? (
         <div className="flex flex-col gap-2 rounded-lg border border-primary/40 bg-primary/5 p-3">
@@ -189,7 +168,6 @@ export function ScreenshotUpload({
           <span className="text-xs">
             Click, drop an image here{capturePaste ? ", or paste it with Ctrl+V" : ""} · PNG, JPEG, or WEBP
           </span>
-          <span className="text-xs">Saved as a compact grayscale copy — make sure the confirmation is visible.</span>
           <input
             id={inputId}
             type="file"

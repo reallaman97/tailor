@@ -9,9 +9,9 @@ import {
   ROLE_TRACK_OPTIONS,
   SOURCE_OPTIONS,
   getPrimaryStatus,
-  needsFollowUp,
+  FOLLOW_UP_AFTER_DAYS,
 } from "@/lib/resume-status";
-import type { RoleTrack, ApplicationSource, ResumeStatus } from "@/generated/prisma/client";
+import { Prisma, type RoleTrack, type ApplicationSource, type ResumeStatus } from "@/generated/prisma/client";
 
 const WEEKS_SHOWN = 6;
 
@@ -123,26 +123,53 @@ export type DashboardAnalyticsFilter = {
  * applications combined; passing `profileId` scopes every section (overview,
  * today, role-track/source breakdowns, trend) to that one candidate.
  */
-export async function getDashboardAnalytics(filter: DashboardAnalyticsFilter = {}): Promise<DashboardAnalytics> {
-  const resumes = await db.resume.findMany({
-    where: {
-      ...(filter.teamId ? { teamId: filter.teamId } : {}),
-      ...(filter.profileId ? { profileId: filter.profileId } : {}),
-    },
-    select: {
-      statuses: true,
-      roleTrack: true,
-      source: true,
-      updatedAt: true,
-      profileId: true,
-    },
-  });
+/**
+ * The dashboard's counts, grouped in the database. Every application used to
+ * be downloaded to count it here — a payload that grew with every application
+ * ever made (megabytes per dashboard load at thousands a month, on a free plan
+ * metered by egress). Grouping by exactly what the counts depend on returns a
+ * few hundred rows instead, with identical results:
+ *  - day: only needed for "today" and the weekly trend, so it's kept for the
+ *    trend window and collapsed to null before it;
+ *  - stale: whether it's been quiet for MORE than FOLLOW_UP_AFTER_DAYS — the
+ *    time half of needsFollowUp.
+ */
+type AnalyticsGroup = {
+  statuses: ResumeStatus[];
+  roleTrack: RoleTrack;
+  source: ApplicationSource;
+  profileId: string | null;
+  day: string | null;
+  stale: boolean;
+  n: number;
+};
 
+async function loadAnalyticsGroups(filter: DashboardAnalyticsFilter, now: Date, windowStart: Date): Promise<AnalyticsGroup[]> {
+  const staleBefore = new Date(now.getTime() - FOLLOW_UP_AFTER_DAYS * 86_400_000);
+  const conditions = [
+    Prisma.sql`TRUE`,
+    ...(filter.teamId ? [Prisma.sql`"teamId" = ${filter.teamId}`] : []),
+    ...(filter.profileId ? [Prisma.sql`"profileId" = ${filter.profileId}`] : []),
+  ];
+  return db.$queryRaw<AnalyticsGroup[]>`
+    SELECT "statuses"::text[] AS statuses, "roleTrack"::text AS "roleTrack", "source"::text AS source, "profileId",
+      CASE WHEN "updatedAt" >= ${windowStart} THEN to_char("updatedAt", 'YYYY-MM-DD') END AS day,
+      ("updatedAt" < ${staleBefore}) AS stale,
+      count(*)::int AS n
+    FROM "Resume"
+    WHERE ${Prisma.join(conditions, " AND ")}
+    GROUP BY 1, 2, 3, 4, 5, 6`;
+}
+
+export async function getDashboardAnalytics(filter: DashboardAnalyticsFilter = {}): Promise<DashboardAnalytics> {
   const now = new Date();
   const today = dateOnly(now);
+  const trendStart = startOfWeek(now);
+  trendStart.setUTCDate(trendStart.getUTCDate() - (WEEKS_SHOWN - 1) * 7);
+  const groups = await loadAnalyticsGroups(filter, now, trendStart);
 
   const overview: OverviewStats = {
-    total: resumes.length,
+    total: groups.reduce((sum, g) => sum + g.n, 0),
     awaitingResponse: 0,
     positiveResponses: 0,
     rejected: 0,
@@ -180,7 +207,8 @@ export async function getDashboardAnalytics(filter: DashboardAnalyticsFilter = {
 
   const todayTrend: TrendCounts = { positiveResponses: 0, scheduled: 0, rejected: 0 };
 
-  for (const r of resumes) {
+  for (const r of groups) {
+    const n = r.n;
     // Multiple simultaneous statuses collapse to one "most final" value for
     // every classification below — see getPrimaryStatus for the precedence.
     const status = getPrimaryStatus(r.statuses);
@@ -189,13 +217,13 @@ export async function getDashboardAnalytics(filter: DashboardAnalyticsFilter = {
     const isFailed = FAILED_STATUSES.has(status);
     const isOpen = OPEN_STATUSES.has(status);
 
-    if (status === "DRAFT" || status === "APPLIED") overview.awaitingResponse++;
-    if (isPositive) overview.positiveResponses++;
-    if (isRejected) overview.rejected++;
-    if (isFailed) overview.failed++;
+    if (status === "DRAFT" || status === "APPLIED") overview.awaitingResponse += n;
+    if (isPositive) overview.positiveResponses += n;
+    if (isRejected) overview.rejected += n;
+    if (isFailed) overview.failed += n;
 
-    const followUp = needsFollowUp(r.statuses, r.updatedAt, now);
-    if (followUp) overview.needsFollowUpToday++;
+    const followUp = POSITIVE_STATUSES.has(status) && r.stale; // = needsFollowUp, per group
+    if (followUp) overview.needsFollowUpToday += n;
 
     if (!profileTotals.has(r.profileId)) {
       profileTotals.set(r.profileId, {
@@ -208,29 +236,29 @@ export async function getDashboardAnalytics(filter: DashboardAnalyticsFilter = {
       });
     }
     const profileBucket = profileTotals.get(r.profileId)!;
-    profileBucket.total++;
-    if (status === "DRAFT" || status === "APPLIED") profileBucket.awaitingResponse++;
-    if (isPositive) profileBucket.positiveResponses++;
-    if (isRejected || isFailed) profileBucket.rejected++;
-    if (isOpen) profileBucket.pending++;
-    if (followUp) profileBucket.needsFollowUp++;
+    profileBucket.total += n;
+    if (status === "DRAFT" || status === "APPLIED") profileBucket.awaitingResponse += n;
+    if (isPositive) profileBucket.positiveResponses += n;
+    if (isRejected || isFailed) profileBucket.rejected += n;
+    if (isOpen) profileBucket.pending += n;
+    if (followUp) profileBucket.needsFollowUp += n;
 
     const roleBucket = roleTrackTotals.get(r.roleTrack)!;
-    roleBucket.applied++;
-    if (isPositive) roleBucket.positive++;
-    if (isRejected || isFailed) roleBucket.rejected++;
-    if (isOpen) roleBucket.pending++;
+    roleBucket.applied += n;
+    if (isPositive) roleBucket.positive += n;
+    if (isRejected || isFailed) roleBucket.rejected += n;
+    if (isOpen) roleBucket.pending += n;
 
     const sourceBucket = sourceTotals.get(r.source)!;
-    sourceBucket.applied++;
-    if (isPositive) sourceBucket.positive++;
+    sourceBucket.applied += n;
+    if (isPositive) sourceBucket.positive += n;
 
     const trendCategory = classifyTrend(status);
     if (trendCategory) {
-      if (dateOnly(r.updatedAt) === today) todayTrend[trendCategory]++;
+      if (r.day === today) todayTrend[trendCategory] += n;
 
-      const weekIdx = weekIndexByKey.get(dateOnly(startOfWeek(r.updatedAt)));
-      if (weekIdx !== undefined) weekly[weekIdx][trendCategory]++;
+      const weekIdx = r.day ? weekIndexByKey.get(dateOnly(startOfWeek(new Date(`${r.day}T00:00:00Z`)))) : undefined;
+      if (weekIdx !== undefined) weekly[weekIdx][trendCategory] += n;
     }
   }
 
@@ -566,39 +594,44 @@ export async function getBidderApplicationCounts(filter: BidderCountsFilter): Pr
   const periods = starts.map(dateOnly);
   const periodIndex = new Map(periods.map((p, i) => [p, i]));
 
-  const resumes = await db.resume.findMany({
-    where: {
-      ...(filter.teamId ? { teamId: filter.teamId } : {}),
-      ...(filter.profileId ? { profileId: filter.profileId } : {}),
-      createdAt: { gte: effectiveFrom, lt: windowEnd },
-    },
-    select: {
-      userId: true,
-      createdAt: true,
-      user: { select: { username: true, email: true } },
-    },
+  // Counted per bidder per day in the database (every period granularity is
+  // made of whole days), not downloaded row by row — see loadAnalyticsGroups.
+  const conditions = [
+    Prisma.sql`"createdAt" >= ${effectiveFrom} AND "createdAt" < ${windowEnd}`,
+    ...(filter.teamId ? [Prisma.sql`"teamId" = ${filter.teamId}`] : []),
+    ...(filter.profileId ? [Prisma.sql`"profileId" = ${filter.profileId}`] : []),
+  ];
+  const daily = await db.$queryRaw<{ userId: string; day: string; n: number }[]>`
+    SELECT "userId", to_char("createdAt", 'YYYY-MM-DD') AS day, count(*)::int AS n
+    FROM "Resume" WHERE ${Prisma.join(conditions, " AND ")}
+    GROUP BY 1, 2`;
+  const users = await db.user.findMany({
+    where: { id: { in: [...new Set(daily.map((r) => r.userId))] } },
+    select: { id: true, username: true, email: true },
   });
+  const userById = new Map(users.map((u) => [u.id, u]));
 
   type Bucket = { name: string; email: string; per: number[]; total: number };
   const byBidder = new Map<string, Bucket>();
   const totalsPerPeriod = new Array(periods.length).fill(0);
 
-  for (const r of resumes) {
-    const idx = periodIndex.get(dateOnly(periodStart(r.createdAt, g)));
+  for (const r of daily) {
+    const idx = periodIndex.get(dateOnly(periodStart(new Date(`${r.day}T00:00:00Z`), g)));
     if (idx === undefined) continue;
     let b = byBidder.get(r.userId);
     if (!b) {
+      const u = userById.get(r.userId);
       b = {
-        name: r.user?.username ?? r.user?.email ?? "Unknown",
-        email: r.user?.email ?? "",
+        name: u?.username ?? u?.email ?? "Unknown",
+        email: u?.email ?? "",
         per: new Array(periods.length).fill(0),
         total: 0,
       };
       byBidder.set(r.userId, b);
     }
-    b.per[idx]++;
-    b.total++;
-    totalsPerPeriod[idx]++;
+    b.per[idx] += r.n;
+    b.total += r.n;
+    totalsPerPeriod[idx] += r.n;
   }
 
   const bidders: BidderCountsRow[] = [...byBidder.entries()]

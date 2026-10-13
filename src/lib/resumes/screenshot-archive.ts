@@ -6,6 +6,12 @@
 // Measured on real screenshots: 816KB PNG -> 23KB, headings still crisp.
 
 export const ARCHIVE_MIME_TYPE = "image/webp";
+
+/**
+ * screenshotMimeType for proof submitted after screenshots stopped being
+ * stored (markProofSubmitted) — there's no image, only the record.
+ */
+export const PROOF_SUBMITTED_MARKER = "proof/not-stored";
 const ARCHIVE_WIDTH_PX = 1280;
 // Full-page captures can be very tall; only cap height where WebP itself must.
 const ARCHIVE_MAX_HEIGHT_PX = 16_000;
@@ -51,8 +57,8 @@ export const REMOVED_PROOF_IMAGE = {
   data: Buffer.from(
     `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="160" viewBox="0 0 480 160">` +
       `<rect width="480" height="160" rx="12" fill="#f1f5f9"/>` +
-      `<text x="240" y="72" text-anchor="middle" font-family="system-ui,sans-serif" font-size="18" fill="#334155">Proof was uploaded</text>` +
-      `<text x="240" y="100" text-anchor="middle" font-family="system-ui,sans-serif" font-size="14" fill="#64748b">The image was removed to save storage.</text>` +
+      `<text x="240" y="72" text-anchor="middle" font-family="system-ui,sans-serif" font-size="18" fill="#334155">Proof submitted</text>` +
+      `<text x="240" y="100" text-anchor="middle" font-family="system-ui,sans-serif" font-size="14" fill="#64748b">Screenshots aren't stored, to save database storage.</text>` +
       `</svg>`
   ),
 };

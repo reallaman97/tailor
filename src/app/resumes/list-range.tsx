@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 // month an unbounded list would grow without limit (and with it the database
 // egress). Older applications are one click away.
 export const LIST_RANGES = [
+  { value: "1", label: "Last 24 hours", days: 1 },
   { value: "7", label: "Last 7 days", days: 7 },
   { value: "30", label: "Last 30 days", days: 30 },
   { value: "90", label: "Last 90 days", days: 90 },

@@ -307,6 +307,9 @@ model Resume {
   companyKey    String? // normalized company name; null for generic names ("Confidential")
   jobKey        String? // canonical posting id from the URL (e.g. "linkedin:3912345678")
   jdFingerprint String? // hash of the normalized job-description text
+  // MinHash signature of the description (src/lib/resumes/duplicates.ts) — the
+  // near-duplicate check compares these in the database, never the full text.
+  jdMinhash     Int[]   @default([])
 
   // An application can hold several simultaneous pipeline stages at once
   // (e.g. Applied+Reply+Tech1) — each status change adds to this history

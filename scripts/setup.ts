@@ -17,7 +17,7 @@ import { db } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import { hashPassword } from "@/lib/auth/password";
 import { generateDek, wrapDek } from "@/lib/crypto/envelope";
-import { backfillDuplicateKeys } from "@/lib/resumes/resumes";
+import { backfillDuplicateKeys, backfillJdMinhash } from "@/lib/resumes/resumes";
 
 const STAGES: [id: string, label: string, sortOrder: number][] = [
   ["stage_introduce", "Introduce", 0],
@@ -171,6 +171,8 @@ async function main(): Promise<void> {
   await ensureDefaultTenancy();
   const keyed = await backfillDuplicateKeys();
   console.log(`✓ duplicate-detection keys ready (${keyed} older applications backfilled)`);
+  const signed = await backfillJdMinhash();
+  console.log(`✓ description signatures ready (${signed} older applications backfilled)`);
   console.log("Setup complete.");
 }
 

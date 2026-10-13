@@ -244,7 +244,6 @@ export function UserApplicationsTable({ resumes }: { resumes: ResumeSummary[] })
       size: 130,
       cell: ({ row }) => (
         <ApprovalStatusCell
-          resumeId={row.original.id}
           approvalStatus={row.original.approvalStatus}
           hasScreenshot={row.original.hasScreenshot}
         />

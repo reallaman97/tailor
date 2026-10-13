@@ -3,7 +3,8 @@ import { db } from "@/lib/db";
 import { createTestUser, deleteTestUser, MINIMAL_PERSONAL_INFO } from "@/lib/profile/test-helpers";
 import { createProfile } from "@/lib/profile/personal-info";
 import { assignProfileToUser } from "@/lib/admin/profiles";
-import { createResume, getResume, uploadScreenshot } from "@/lib/resumes/resumes";
+import { createResume, getResume, markProofSubmitted } from "@/lib/resumes/resumes";
+import { REMOVED_PROOF_IMAGE } from "@/lib/resumes/screenshot-archive";
 import {
   setApplicationApproval,
   getApplicationScreenshot,
@@ -36,7 +37,7 @@ describe("admin applications (integration)", () => {
       jobTitle: "Engineer",
       jobDescription: "A description that is definitely long enough to pass validation.",
     });
-    await uploadScreenshot(userId, id, Buffer.from("fake-png"), "image/png");
+    await markProofSubmitted(userId, id);
 
     const before = await countApprovedApplications(userId);
 
@@ -59,7 +60,7 @@ describe("admin applications (integration)", () => {
       jobTitle: "Engineer",
       jobDescription: "A description that is definitely long enough to pass validation.",
     });
-    await uploadScreenshot(userId, id, Buffer.from("fake-png"), "image/png");
+    await markProofSubmitted(userId, id);
 
     await setApplicationApproval(id, "APPROVED");
     await setApplicationApproval(id, "REJECTED");
@@ -69,18 +70,17 @@ describe("admin applications (integration)", () => {
     expect(resume.approvedAt).toBeNull();
   });
 
-  it("serves a screenshot for any user's application, unscoped by owner", async () => {
+  it("serves the proof placeholder for any user's application, unscoped by owner", async () => {
     const id = await createResume(userId, {
       jobLink: undefined,
       companyName: "Cross User Co",
       jobTitle: "Engineer",
       jobDescription: "A description that is definitely long enough to pass validation.",
     });
-    await uploadScreenshot(userId, id, Buffer.from("admin-visible-bytes"), "image/jpeg");
+    await markProofSubmitted(userId, id);
 
-    const shot = await getApplicationScreenshot(id);
-    expect(shot?.mimeType).toBe("image/jpeg");
-    expect(shot?.data.toString()).toBe("admin-visible-bytes");
+    // Proof is recorded but no image is stored, so the placeholder is served.
+    expect(await getApplicationScreenshot(id)).toEqual(REMOVED_PROOF_IMAGE);
   });
 
   it("returns null when an application has no screenshot", async () => {

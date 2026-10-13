@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireResumePlatformAccess, requireSuperAdmin } from "@/lib/auth/require-user";
-import { ResumeNotFoundError, InvalidScreenshotError, uploadScreenshot } from "@/lib/resumes/resumes";
+import { ResumeNotFoundError, markProofSubmitted } from "@/lib/resumes/resumes";
 import { updateApplicationDetails } from "@/lib/admin/applications";
 import { updateResumeDetailsSchema } from "@/lib/resumes/schemas";
 
@@ -35,28 +35,18 @@ export async function updateResumeDetailsAction(
 
 export type ScreenshotActionState = { error?: string; success?: boolean } | undefined;
 
-export async function uploadScreenshotAction(
-  resumeId: string,
-  _prevState: ScreenshotActionState,
-  formData: FormData
-): Promise<ScreenshotActionState> {
+/**
+ * "Upload screenshot": records that proof was submitted. The uploader never
+ * sends the image (see markProofSubmitted) — only this call is made.
+ */
+export async function markProofSubmittedAction(resumeId: string): Promise<ScreenshotActionState> {
   const user = await requireResumePlatformAccess();
-
-  const file = formData.get("screenshot");
-  if (!(file instanceof File) || file.size === 0) {
-    return { error: "Choose a screenshot image to upload" };
-  }
-
-  const buffer = Buffer.from(await file.arrayBuffer());
-
   try {
-    await uploadScreenshot(user.id, resumeId, buffer, file.type);
+    await markProofSubmitted(user.id, resumeId);
   } catch (err) {
-    if (err instanceof InvalidScreenshotError) return { error: err.message };
     if (err instanceof ResumeNotFoundError) return { error: err.message };
     throw err;
   }
-
   revalidatePath(`/resumes/${resumeId}`);
   revalidatePath("/resumes");
   return { success: true };

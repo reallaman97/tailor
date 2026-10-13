@@ -1,17 +1,17 @@
 import { db } from "@/lib/db";
 import { getAssignedProfileId } from "@/lib/profile/shared";
 import { normalizeJobUrl } from "@/lib/resumes/normalize-url";
-import { archiveScreenshot, REMOVED_PROOF_IMAGE } from "@/lib/resumes/screenshot-archive";
+import { REMOVED_PROOF_IMAGE, PROOF_SUBMITTED_MARKER } from "@/lib/resumes/screenshot-archive";
 import {
   companyKey,
   jobPostingKey,
   jdFingerprint,
-  shingles,
-  similarity,
+  jdMinhash,
+  MINHASH_SIZE,
   NEAR_DUPLICATE_THRESHOLD,
 } from "@/lib/resumes/duplicates";
 import type { CreateResumeInput } from "@/lib/resumes/schemas";
-import type { ResumeStatus, RoleTrack, ApplicationSource, ApprovalStatus } from "@/generated/prisma/client";
+import { Prisma, type ResumeStatus, type RoleTrack, type ApplicationSource, type ApprovalStatus } from "@/generated/prisma/client";
 
 export class ResumeNotFoundError extends Error {
   constructor() {
@@ -158,7 +158,8 @@ export type DuplicateScope = { profileId: string } | { userId: string; profileId
 
 // How many of the scope's most recent descriptions to compare for near-
 // duplicates (the exact keys above are indexed and cover all history).
-const NEAR_DUPLICATE_WINDOW = 300;
+// (Signatures are compared in the database, so a wide window costs no egress.)
+const NEAR_DUPLICATE_WINDOW = 1000;
 
 const NOT_CANCELED = { NOT: { statuses: { has: "CANCELED" as const } } };
 
@@ -210,27 +211,61 @@ export async function findDuplicateApplication(
     pick("description", (r) => fingerprint !== null && r.jdFingerprint === fingerprint);
   if (exactHit) return exactHit;
 
-  // Near-identical description among the scope's recent applications.
+  // Near-identical description among the scope's recent applications —
+  // compared in the database by MinHash signature, so only a match (if any)
+  // comes back. Downloading recent descriptions to compare here cost ~1.5MB
+  // per check, several checks per application: gigabytes of DB egress a week.
   if (!input.jobDescription) return null;
-  const candidate = shingles(input.jobDescription);
-  if (candidate.size < 20) return null;
-  const recent = await db.resume.findMany({
-    where: { ...scope, ...NOT_CANCELED },
-    orderBy: { createdAt: "desc" },
-    take: NEAR_DUPLICATE_WINDOW,
-    select: { id: true, companyName: true, jobTitle: true, jobDescription: true },
-  });
-  for (const r of recent) {
-    if (similarity(candidate, shingles(r.jobDescription)) >= NEAR_DUPLICATE_THRESHOLD) {
-      return { existing: { id: r.id, companyName: r.companyName, jobTitle: r.jobTitle }, reason: "description" };
-    }
-  }
-  return null;
+  const signature = jdMinhash(input.jobDescription);
+  if (signature.length === 0) return null;
+  const minMatches = Math.ceil(NEAR_DUPLICATE_THRESHOLD * MINHASH_SIZE);
+  const scopeSql =
+    "userId" in scope
+      ? Prisma.sql`"userId" = ${scope.userId} AND "profileId" IS NULL`
+      : Prisma.sql`"profileId" = ${scope.profileId}`;
+  const [near] = await db.$queryRaw<{ id: string; companyName: string; jobTitle: string }[]>`
+    SELECT r.id, r."companyName", r."jobTitle"
+    FROM (
+      SELECT id, "companyName", "jobTitle", "jdMinhash", "createdAt" FROM "Resume"
+      WHERE ${scopeSql}
+        AND NOT ("statuses" @> ARRAY['CANCELED']::"ResumeStatus"[])
+        AND cardinality("jdMinhash") = ${MINHASH_SIZE}
+      ORDER BY "createdAt" DESC
+      LIMIT ${NEAR_DUPLICATE_WINDOW}
+    ) r
+    WHERE (SELECT count(*) FROM unnest(r."jdMinhash", ${signature}::int4[]) AS t(a, b) WHERE a = b) >= ${minMatches}
+    ORDER BY r."createdAt" DESC
+    LIMIT 1`;
+  return near ? { existing: near, reason: "description" } : null;
 }
 
 /** The duplicate-check scope for building on behalf of a profile (or a user with none). */
 export function duplicateScope(userId: string, profileId: string | null): DuplicateScope {
   return profileId ? { profileId } : { userId, profileId: null };
+}
+
+/**
+ * Fills in the description signature (jdMinhash) for applications created
+ * before it existed — reading each description once. A description too short
+ * to compare gets [0], so it isn't picked up again. Plain SQL writes, so
+ * updatedAt (follow-up reminders) is untouched. Run by `npm run setup`.
+ */
+export async function backfillJdMinhash(batchSize = 100): Promise<number> {
+  let updated = 0;
+  for (;;) {
+    const rows = await db.resume.findMany({
+      where: { jdMinhash: { isEmpty: true }, jobDescription: { not: "" } },
+      select: { id: true, jobDescription: true },
+      take: batchSize,
+    });
+    if (rows.length === 0) break;
+    for (const r of rows) {
+      const signature = jdMinhash(r.jobDescription);
+      await db.$executeRaw`UPDATE "Resume" SET "jdMinhash" = ${signature.length ? signature : [0]}::int4[] WHERE id = ${r.id}`;
+      updated++;
+    }
+  }
+  return updated;
 }
 
 /**
@@ -314,6 +349,7 @@ export async function createResume(userId: string, input: CreateResumeInput): Pr
       jobKey: jobPostingKey(jobLink),
       // "" (not null) when the text is too short to fingerprint, so backfill skips the row.
       jdFingerprint: jdFingerprint(input.jobDescription) ?? "",
+      jdMinhash: jdMinhash(input.jobDescription),
       roleTrack: input.roleTrack ?? "OTHER",
       source: input.source ?? "OTHER",
       statuses: [status],
@@ -385,38 +421,31 @@ export async function getResume(userId: string, resumeId: string): Promise<Resum
   };
 }
 
-const MAX_SCREENSHOT_BYTES = 4.5 * 1024 * 1024;
-const ALLOWED_SCREENSHOT_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
-
-export class InvalidScreenshotError extends Error {}
-
-/** Uploading new proof always resets approval back to PENDING — a superadmin re-reviews it. Any team member sharing the profile may upload, not just the original creator. */
-export async function uploadScreenshot(
-  userId: string,
-  resumeId: string,
-  data: Buffer,
-  mimeType: string
-): Promise<void> {
-  if (!ALLOWED_SCREENSHOT_TYPES.has(mimeType)) {
-    throw new InvalidScreenshotError("Unsupported file type — upload a PNG, JPEG, or WEBP image.");
-  }
-  if (data.byteLength > MAX_SCREENSHOT_BYTES) {
-    throw new InvalidScreenshotError("Image is too large (max 4.5MB).");
-  }
-
+/**
+ * Records that proof of application was submitted — without storing the image.
+ * Screenshots are no longer kept (database storage and transfer on the free
+ * plan); the uploader still asks for one so bidders keep the habit, but never
+ * sends it. screenshotMimeType is the record that proof was given (hasScreenshot,
+ * dashboard "completed" counts); old stored images remain viewable by admins.
+ * Submitting proof always resets approval to PENDING. Any team member sharing
+ * the profile may submit it, not just the original creator.
+ */
+export async function markProofSubmitted(userId: string, resumeId: string): Promise<void> {
   const scope = await scopeFilter(userId);
-  const stored = (await archiveScreenshot(data)) ?? { data, mimeType };
   const result = await db.resume.updateMany({
     where: { id: resumeId, ...scope },
-    data: {
-      screenshotData: new Uint8Array(stored.data),
-      screenshotMimeType: stored.mimeType,
-      approvalStatus: "PENDING",
-      approvedAt: null,
-    },
+    data: PROOF_SUBMITTED_DATA,
   });
   if (result.count === 0) throw new ResumeNotFoundError();
 }
+
+/** The fields that record a proof submission (shared with the extension routes). */
+export const PROOF_SUBMITTED_DATA = {
+  screenshotData: null,
+  screenshotMimeType: PROOF_SUBMITTED_MARKER,
+  approvalStatus: "PENDING" as const,
+  approvedAt: null,
+};
 
 export async function getScreenshot(
   userId: string,
