@@ -234,6 +234,8 @@ export type AdminTrackerFilter = {
   teamId?: string;
   /** Only applications created on or after this — keeps the list (and its DB egress) bounded. */
   since?: Date;
+  /** Only these applications (e.g. search results). */
+  ids?: string[];
 };
 
 /** The superadmin's view of every user's tracker — default sort is applied date/time newest first. */
@@ -248,6 +250,7 @@ export async function listAllApplications(filter: AdminTrackerFilter = {}): Prom
       ...(filter.profileId ? { profileId: filter.profileId } : {}),
       ...(filter.teamId ? { teamId: filter.teamId } : {}),
       ...(filter.since ? { createdAt: { gte: filter.since } } : {}),
+      ...(filter.ids ? { id: { in: filter.ids } } : {}),
     },
     orderBy: [{ appliedAt: "desc" }, { createdAt: "desc" }],
     select: APPLICATION_ROW_SELECT,

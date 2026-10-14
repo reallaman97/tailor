@@ -62,3 +62,24 @@ export const REMOVED_PROOF_IMAGE = {
       `</svg>`
   ),
 };
+
+/**
+ * A meeting screenshot for an Interview tracker note: kept in color (it's for
+ * recognising the interviewers), at most 1600px wide, as WebP. Typically
+ * 50–150KB. Returns null if it can't be processed — the caller keeps the original.
+ */
+export async function compressNoteImage(data: Buffer): Promise<{ data: Buffer; mimeType: string } | null> {
+  try {
+    const { default: sharp } = await import("sharp");
+    const out = await sharp(data, { failOn: "none" })
+      .rotate()
+      .resize({ width: 1600, height: 16_000, fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 60, effort: 6 })
+      .toBuffer();
+    if (out.byteLength >= data.byteLength) return null;
+    return { data: out, mimeType: "image/webp" };
+  } catch (err) {
+    console.error("[note-image] couldn't compress; storing original", err);
+    return null;
+  }
+}

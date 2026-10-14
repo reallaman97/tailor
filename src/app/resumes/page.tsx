@@ -7,36 +7,49 @@ import { getTeamContext } from "@/lib/auth/team-context";
 import { AdminApplicationsTable } from "./admin-applications-table";
 import { UserApplicationsTable } from "./user-applications-table";
 import { resolveListRange, ListRangeTabs } from "./list-range";
+import { searchApplications } from "@/lib/admin/application-search";
+import { ApplicationSearchBox } from "@/components/application-search-box";
 import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
 import { buttonVariants } from "@/components/ui/button";
 import { PlusIcon, FileTextIcon } from "@/components/icons";
 
-export default async function ResumesPage({ searchParams }: { searchParams: Promise<{ range?: string }> }) {
-  const [user, { range: rangeParam }] = await Promise.all([requireResumePlatformAccess(), searchParams]);
+export default async function ResumesPage({ searchParams }: { searchParams: Promise<{ range?: string; q?: string }> }) {
+  const [user, { range: rangeParam, q }] = await Promise.all([requireResumePlatformAccess(), searchParams]);
   const isSuperAdmin = hasTeamAdminPower(user.role);
 
   if (isSuperAdmin) {
     // The whole team's applications: default to a day (thousands a month).
     const { range, since } = resolveListRange(rangeParam, "1");
     const ctx = await getTeamContext();
-    const applications = await listAllApplications({ teamId: ctx?.activeTeamId ?? undefined, since });
+    const teamId = ctx?.activeTeamId ?? undefined;
+    // A search looks across every application, whatever the date range.
+    const query = (q ?? "").trim();
+    const applications = query ? await searchApplications(query, { teamId }) : await listAllApplications({ teamId, since });
+    const shown = query
+      ? `${applications.length === 50 ? "the first 50" : applications.length} match${applications.length === 1 ? "" : "es"} for “${query}” across all time`
+      : `${applications.length} application${applications.length === 1 ? "" : "s"} from ${range.label.toLowerCase()}`;
 
     return (
       <AppShell userEmail={user.email} isSuperAdmin wide>
         <div className="flex flex-col gap-6">
           <PageHeader
             title="Applications"
-            description={`Every user's tracked applications — showing ${applications.length} application${applications.length === 1 ? "" : "s"} from ${range.label.toLowerCase()}, newest applied first. Sort or filter any column from its header.`}
+            description={`Every user's tracked applications — showing ${shown}. Sort or filter any column from its header.`}
           />
-          <ListRangeTabs current={range.value} />
+          <ApplicationSearchBox action="/resumes" query={query} />
+          {!query && <ListRangeTabs current={range.value} />}
 
           {applications.length === 0 ? (
             <EmptyState
               icon={FileTextIcon}
-              title="No applications in this range"
-              description="Applications appear here automatically once a user builds a resume. Try a longer date range."
+              title={query ? "No matching applications" : "No applications in this range"}
+              description={
+                query
+                  ? "Try fewer or shorter words — any part of the company, title, candidate, bidder, or link works."
+                  : "Applications appear here automatically once a user builds a resume. Try a longer date range."
+              }
             />
           ) : (
             <AdminApplicationsTable applications={applications} />

@@ -66,6 +66,8 @@ model User {
   assignedInterviews Interview[]              @relation("InterviewCaller")
   interviewComments  InterviewComment[]
   interviewFiles     InterviewReferenceFile[]
+  // Notes written in the Interview tracker (src/lib/interview-tracker).
+  applicationNotes   ApplicationNote[]
   // Recurring weekly availability a Caller submits; managers view it in aggregate.
   availability       CallerAvailability[]
   // Connected external calendar (Google/Outlook) whose events overlay the
@@ -172,14 +174,14 @@ model WorkHistoryEntry {
   profileId String
   profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
-  company     String // plaintext — low sensitivity, needed for sorting/search
-  jobTitle    String
-  location    String?
+  company      String // plaintext — low sensitivity, needed for sorting/search
+  jobTitle     String
+  location     String?
   workingStyle WorkingStyle? // Full-time / Part-time / Contract — unset for older entries
-  workingType  WorkingType?  // Remote / Hybrid / On-site — unset for older entries
-  startDate DateTime
-  endDate   DateTime? // null = current role
-  sortOrder Int       @default(0)
+  workingType  WorkingType? // Remote / Hybrid / On-site — unset for older entries
+  startDate    DateTime
+  endDate      DateTime? // null = current role
+  sortOrder    Int           @default(0)
 
   achievementsEnc String // encrypted JSON string[] — bullet text can contain sensitive specifics
 
@@ -213,7 +215,7 @@ model CertificationEntry {
   name      String // e.g. "AWS Certified Solutions Architect – Associate"
   issuer    String? // e.g. "Amazon Web Services"
   issueDate DateTime? // month/year granularity, stored as UTC-midnight of the 1st
-  sortOrder Int      @default(0)
+  sortOrder Int       @default(0)
 
   @@index([profileId])
 }
@@ -300,7 +302,7 @@ model Resume {
   jobLink        String? // plaintext, just a URL reference — also the primary duplicate-detection key
   companyName    String
   jobTitle       String
-  jobDescription String @db.Text // plaintext — third-party posting text, not user PII
+  jobDescription String  @db.Text // plaintext — third-party posting text, not user PII
 
   // Duplicate-detection keys (src/lib/resumes/duplicates.ts), checked before any
   // AI call. Null for rows created before they existed until setup backfills.
@@ -316,14 +318,14 @@ model Resume {
   // rather than replacing it, so the array reflects every stage reached so
   // far. Reporting collapses this into one "primary" status via a
   // most-final-wins precedence (see getPrimaryStatus in resume-status.ts).
-  statuses   ResumeStatus[]    @default([DRAFT])
-  roleTrack  RoleTrack         @default(OTHER)
-  source     ApplicationSource @default(OTHER)
+  statuses  ResumeStatus[]    @default([DRAFT])
+  roleTrack RoleTrack         @default(OTHER)
+  source    ApplicationSource @default(OTHER)
 
-  notes        String?   @db.Text
+  notes String? @db.Text
 
-  approvalStatus ApprovalStatus @default(PENDING)
-  approvedAt     DateTime?
+  approvalStatus     ApprovalStatus @default(PENDING)
+  approvedAt         DateTime?
   // Proof-of-submission screenshot a normal user uploads for superadmin review.
   screenshotData     Bytes?
   screenshotMimeType String?
@@ -336,10 +338,12 @@ model Resume {
 
   // Cover letter written to match the tailored resume (src/lib/assist).
   // Encrypted with the profile DEK, like tailoredContentEnc.
-  coverLetterEnc         String?   @db.Text
+  coverLetterEnc         String?             @db.Text
   coverLetterGeneratedAt DateTime?
   // "Ask AI" answers to the application form's own questions.
   answers                ApplicationAnswer[]
+  // Interview tracker: the admin's running notes on how the interviews went.
+  interviewNotes         ApplicationNote[]
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -356,7 +360,7 @@ model Resume {
 
   // Multi-tenancy (Phase 1, additive; backfilled from the owner/profile).
   teamId String?
-  team   Team?  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   // DEPRECATED — the payments/invoicing feature was removed; nothing reads or
   // writes this any more. Kept only so existing invoice data isn't dropped.
@@ -384,13 +388,36 @@ model Resume {
 // for it, grounded in the application's tailored resume + job description.
 // Question and answer are encrypted with the profile DEK (they describe the
 // candidate). Deleted with the application.
+// A note in the Interview tracker (src/lib/interview-tracker): what happened in
+// an interview round for this application — a comment, a meeting screenshot
+// (who the interviewers were), or both — so the next round starts from that
+// history. Images are compressed on upload and only ever loaded one at a time.
+model ApplicationNote {
+  id       String  @id @default(cuid())
+  resumeId String
+  resume   Resume  @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  authorId String?
+  author   User?   @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  // The interview stage the application was at when this was written (e.g. TECH1).
+  stage         ResumeStatus?
+  body          String        @default("") @db.Text
+  imageData     Bytes?
+  imageMimeType String?
+  imageSize     Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([resumeId, createdAt])
+}
+
 model ApplicationAnswer {
   id       String @id @default(cuid())
   resumeId String
   resume   Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
 
-  questionEnc String @db.Text
-  answerEnc   String @db.Text
+  questionEnc String  @db.Text
+  answerEnc   String  @db.Text
   // "brief" | "standard" | "detailed" — the length asked for.
   length      String
   charLimit   Int?
@@ -407,19 +434,19 @@ model ApplicationAnswer {
 }
 
 model UsageEvent {
-  id     String  @id @default(cuid())
-  userId String
-  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id       String  @id @default(cuid())
+  userId   String
+  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   resumeId String?
   resume   Resume? @relation(fields: [resumeId], references: [id], onDelete: SetNull)
 
-  kind               String // "tailoring" | "resume-import" | "cover-letter" | "ask-ai"
-  model              String
-  inputTokens        Int
+  kind                String // "tailoring" | "resume-import" | "cover-letter" | "ask-ai"
+  model               String
+  inputTokens         Int
   // Of inputTokens, those served from the provider's prompt cache (billed at a
   // small fraction of the input price).
-  cachedInputTokens  Int @default(0)
-  outputTokens       Int
+  cachedInputTokens   Int    @default(0)
+  outputTokens        Int
   estimatedCostMicros Int // millionths of a dollar — a single call often costs a fraction of a cent
 
   createdAt DateTime @default(now())
@@ -440,7 +467,7 @@ model AppSettings {
   // read/write this exact id) rather than a DB constraint.
   id String @id @default("singleton")
 
-  openaiModel String @default("gpt-4.1-mini")
+  openaiModel     String         @default("gpt-4.1-mini")
   // Encrypted directly with the app master key (same key that wraps every
   // Profile/User DEK) — null means "no override, fall back to the
   // OPENAI_API_KEY environment variable". Never returned to a client in
@@ -450,7 +477,7 @@ model AppSettings {
   // Legacy, no longer read: resume generation now uses the secret prompt from
   // the RESUME_PROMPT_B64 env var (src/lib/tailoring/resume-prompt.ts), which
   // is never stored in the DB or editable from the web portal.
-  tailoringPrompt String? @db.Text
+  tailoringPrompt String?        @db.Text
   // DeepSeek model for resume generation (see src/lib/tailoring/models.ts).
   // openaiModel above still drives the smaller OpenAI features.
   resumeModel     String         @default("deepseek-v4-pro")
@@ -487,15 +514,15 @@ model ApplicationCheck {
   resume   Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
 
   // True = the posting's tech stack is relevant to the team's target stack.
-  passed      Boolean
+  passed       Boolean
   // Target technologies the posting actually requires/uses.
   matchedTech  String[] @default([])
   // The posting's own main technologies, as the checker read them.
   primaryStack String[] @default([])
   // DEPRECATED — verdicts from the old country/work-style/category checks.
-  countryOk  Boolean @default(true)
-  remoteOk   Boolean @default(true)
-  categoryOk Boolean @default(true)
+  countryOk    Boolean  @default(true)
+  remoteOk     Boolean  @default(true)
+  categoryOk   Boolean  @default(true)
 
   detectedCountry   String?
   detectedWorkStyle String?
@@ -547,7 +574,7 @@ model InterviewStage {
 
   // Multi-tenancy (Phase 1, additive; each team configures its own lists).
   teamId String?
-  team   Team?  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([active, sortOrder])
   @@index([teamId])
@@ -569,7 +596,7 @@ model InterviewStatus {
 
   // Multi-tenancy (Phase 1, additive; each team configures its own lists).
   teamId String?
-  team   Team?  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([active, sortOrder])
   @@index([teamId])
@@ -588,7 +615,7 @@ model InterviewMeetingType {
 
   // Multi-tenancy (Phase 1, additive; each team configures its own lists).
   teamId String?
-  team   Team?  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([active, sortOrder])
   @@index([teamId])
@@ -633,13 +660,13 @@ model Interview {
   // text (jobDescription/companyName) and operational notes (notes): these are
   // not the encrypted candidate PII, which lives on Profile.
   jobTitle        String
-  jobDescription  String  @db.Text
+  jobDescription  String    @db.Text
   jobPostLink     String?
   companyName     String
   salaryRange     String?
   scheduledAt     DateTime? // the interview time; rendered in the Settings timezone
   meetingLink     String?
-  interviewerInfo String? @db.Text // free text; may embed links
+  interviewerInfo String?   @db.Text // free text; may embed links
 
   // Optionally-attached resume file (bytes in Postgres, mirroring
   // Resume.screenshotData). When `applicationId` is set, the UI instead links to
@@ -666,7 +693,7 @@ model Interview {
 
   // Multi-tenancy (Phase 1, additive; backfilled, required after Phase 2).
   teamId String?
-  team   Team?  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  team   Team?   @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([callerId])
   @@index([statusId])
@@ -740,17 +767,17 @@ model CalendarConnection {
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  provider      String  @default("google") // google | microsoft
-  accountEmail  String? // the connected calendar account, for display
+  provider     String  @default("google") // google | microsoft
+  accountEmail String? // the connected calendar account, for display
 
   accessTokenEnc  String   @db.Text
   refreshTokenEnc String?  @db.Text
   expiresAt       DateTime // access-token expiry
 
-  syncToken   String? @db.Text // provider incremental-sync cursor
-  status      String  @default("active") // active | needs_reauth
+  syncToken    String?   @db.Text // provider incremental-sync cursor
+  status       String    @default("active") // active | needs_reauth
   lastSyncedAt DateTime?
-  lastError    String?  @db.Text
+  lastError    String?   @db.Text
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -783,8 +810,8 @@ model ExternalEvent {
 
   startsAt DateTime
   endsAt   DateTime?
-  allDay   Boolean  @default(false)
-  status   String   @default("confirmed") // confirmed | cancelled
+  allDay   Boolean   @default(false)
+  status   String    @default("confirmed") // confirmed | cancelled
 
   linkedInterviewId String?
   linkedInterview   Interview? @relation(fields: [linkedInterviewId], references: [id], onDelete: SetNull)
@@ -833,12 +860,12 @@ model TeamMembership {
   teamId String
   team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
-  role             UserRole @default(BIDDER) // team-scoped role (TEAM_ADMIN/MANAGER/CALLER/BIDDER)
+  role              UserRole @default(BIDDER) // team-scoped role (TEAM_ADMIN/MANAGER/CALLER/BIDDER)
   assignedProfileId String?
 
   // DEPRECATED — bidder rates/earnings were removed; unused. Kept only so
   // existing data isn't dropped.
-  applicationRate  Float    @default(0.08)
+  applicationRate Float @default(0.08)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -888,12 +915,12 @@ enum InvoiceStatus {
 }
 
 model Invoice {
-  id       String @id @default(cuid())
-  teamId   String
-  team     Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  id          String @id @default(cuid())
+  teamId      String
+  team        Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
   // The bidder being paid.
-  bidderId String
-  bidder   User   @relation("BidderInvoices", fields: [bidderId], references: [id], onDelete: Cascade)
+  bidderId    String
+  bidder      User   @relation("BidderInvoices", fields: [bidderId], references: [id], onDelete: Cascade)
   // Who generated it (team admin / manager). Plain id — no back-relation needed.
   createdById String
 
@@ -907,8 +934,8 @@ model Invoice {
   // Bidder-provided payout destination (crypto/bank/PayPal — free text).
   paymentAddress String?
   // Set when marked paid: a link/reference to the payment (tx hash, receipt URL).
-  paymentLink String?
-  paidAt      DateTime?
+  paymentLink    String?
+  paidAt         DateTime?
 
   // Everything up to this instant was considered when billing.
   periodEnd DateTime @default(now())

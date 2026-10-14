@@ -67,6 +67,7 @@ export const config = {
     "/dashboard/:path*",
     "/profile/:path*",
     "/resumes/:path*",
+    "/interview-tracker/:path*",
     "/admin/:path*",
     "/account/:path*",
     "/interview/:path*",

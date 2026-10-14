@@ -7,12 +7,14 @@ import {
   SparklesIcon,
   CheckCircleIcon,
   FolderIcon,
+  MicIcon,
 } from "@/components/icons";
 
 const DASHBOARD: ShellNavLink = { href: "/dashboard", label: "Dashboard", icon: LayoutDashboardIcon };
 const PROFILES: ShellNavLink = { href: "/admin/profiles", label: "Profiles", icon: FolderIcon };
 const RESUME_BUILDER: ShellNavLink = { href: "/resumes/new", label: "Resume Builder", icon: SparklesIcon };
 const APPLICATIONS: ShellNavLink = { href: "/resumes", label: "Applications", icon: FileTextIcon };
+const INTERVIEW_TRACKER: ShellNavLink = { href: "/interview-tracker", label: "Interview tracker", icon: MicIcon };
 const CHECKS: ShellNavLink = { href: "/checks", label: "Application Checks", icon: CheckCircleIcon };
 
 /**
@@ -40,7 +42,7 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const links = isSuperAdmin
-    ? [DASHBOARD, PROFILES, RESUME_BUILDER, APPLICATIONS, CHECKS]
+    ? [DASHBOARD, PROFILES, RESUME_BUILDER, APPLICATIONS, INTERVIEW_TRACKER, CHECKS]
     : [DASHBOARD, RESUME_BUILDER, APPLICATIONS];
 
   return (
