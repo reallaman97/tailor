@@ -4,7 +4,8 @@ import { getTeamContext } from "@/lib/auth/team-context";
 import { listTrackedApplications, type TrackedApplication, type TrackerView } from "@/lib/interview-tracker/tracker";
 import { INTERVIEW_STAGES, CLOSING_STAGES } from "@/lib/interview-tracker/stages";
 import { searchApplications } from "@/lib/admin/application-search";
-import { getPrimaryStatus } from "@/lib/resume-status";
+import { getPrimaryStatus, STATUS_LABEL } from "@/lib/resume-status";
+import type { ResumeStatus } from "@/generated/prisma/client";
 import { AppShell } from "@/components/app-shell";
 import { PageHeader } from "@/components/page-header";
 import { EmptyState } from "@/components/empty-state";
@@ -83,51 +84,78 @@ export default async function InterviewTrackerPage({
             }
           />
         ) : (
-          <ul className="grid gap-4 lg:grid-cols-2">
-            {tracked.map((a) => (
-              <TrackedCard key={a.id} app={a} />
-            ))}
-          </ul>
+          <StageBoard apps={tracked} stages={view === "active" ? INTERVIEW_STAGES : CLOSING_STAGES} />
         )}
       </div>
     </AppShell>
   );
 }
 
+/**
+ * One column per stage, in pipeline order, each with its count — so it's clear
+ * at a glance what's at which step. Columns sit side by side on wide screens
+ * and stack on narrow ones; empty stages stay visible (as "None") so the
+ * pipeline always reads the same.
+ */
+function StageBoard({ apps, stages }: { apps: TrackedApplication[]; stages: ResumeStatus[] }) {
+  const byStage = new Map<ResumeStatus, TrackedApplication[]>(stages.map((s) => [s, []]));
+  for (const a of apps) byStage.get(a.stage)?.push(a);
+
+  return (
+    <div
+      className="grid gap-4"
+      style={{ gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${stages.length > 3 ? "15rem" : "20rem"}), 1fr))` }}
+    >
+      {stages.map((stage) => {
+        const items = byStage.get(stage) ?? [];
+        return (
+          <section key={stage} aria-label={STATUS_LABEL[stage]} className="flex flex-col gap-3 rounded-lg bg-muted/30 p-3">
+            <header className="flex items-center justify-between gap-2">
+              <StatusPill status={stage} />
+              <span className="text-sm tabular-nums text-muted-foreground">{items.length}</span>
+            </header>
+            {items.length === 0 ? (
+              <p className="px-1 text-xs text-muted-foreground">None</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {items.map((a) => (
+                  <TrackedCard key={a.id} app={a} />
+                ))}
+              </ul>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 function TrackedCard({ app }: { app: TrackedApplication }) {
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <Link href={`/interview-tracker/${app.id}`} className="font-semibold text-foreground hover:underline">
-            {app.companyName}
-          </Link>
-          <span className="text-sm text-muted-foreground">{app.jobTitle}</span>
-          <span className="text-xs text-muted-foreground">
-            {app.candidateName ?? "No candidate"} · applied by {app.bidderName}
-          </span>
-        </div>
-        <StatusPill status={app.stage} />
+    <li className="flex flex-col gap-2 rounded-md border border-border bg-card p-3">
+      <div className="flex min-w-0 flex-col">
+        <Link href={`/interview-tracker/${app.id}`} className="truncate font-medium text-foreground hover:underline">
+          {app.companyName}
+        </Link>
+        <span className="truncate text-sm text-muted-foreground">{app.jobTitle}</span>
+        <span className="truncate text-xs text-muted-foreground">
+          {app.candidateName ?? "No candidate"} · {app.bidderName}
+        </span>
       </div>
       {app.lastNote ? (
-        <div className="rounded-md bg-muted/40 px-3 py-2 text-sm">
-          <p className="line-clamp-3 whitespace-pre-wrap text-foreground">
-            {app.lastNote.body || (app.lastNote.hasImage ? "Meeting screenshot" : "")}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Last note {formatDate(app.lastNote.createdAt)} · {app.noteCount} note{app.noteCount === 1 ? "" : "s"}
-            {app.lastNote.hasImage && app.lastNote.body ? " · with screenshot" : ""}
-          </p>
-        </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">No notes yet.</p>
-      )}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <StageSelect resumeId={app.id} current={app.stage} />
-        <Link href={`/interview-tracker/${app.id}`} className="text-sm font-medium text-primary hover:underline">
-          Open history →
+        <p className="line-clamp-2 whitespace-pre-wrap rounded bg-muted/50 px-2 py-1 text-xs text-foreground">
+          {app.lastNote.body || "Meeting screenshot"}
+        </p>
+      ) : null}
+      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>
+          {app.noteCount} note{app.noteCount === 1 ? "" : "s"} · {formatDate(app.lastNote?.createdAt ?? app.updatedAt)}
+        </span>
+        <Link href={`/interview-tracker/${app.id}`} className="font-medium text-primary hover:underline">
+          Open →
         </Link>
       </div>
+      <StageSelect resumeId={app.id} current={app.stage} />
     </li>
   );
 }

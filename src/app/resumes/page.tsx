@@ -4,6 +4,7 @@ import { hasTeamAdminPower } from "@/lib/auth/roles";
 import { listResumes } from "@/lib/resumes/resumes";
 import { listAllApplications } from "@/lib/admin/applications";
 import { getTeamContext } from "@/lib/auth/team-context";
+import { db } from "@/lib/db";
 import { AdminApplicationsTable } from "./admin-applications-table";
 import { UserApplicationsTable } from "./user-applications-table";
 import { resolveListRange, ListRangeTabs } from "./list-range";
@@ -26,7 +27,11 @@ export default async function ResumesPage({ searchParams }: { searchParams: Prom
     const teamId = ctx?.activeTeamId ?? undefined;
     // A search looks across every application, whatever the date range.
     const query = (q ?? "").trim();
-    const applications = query ? await searchApplications(query, { teamId }) : await listAllApplications({ teamId, since });
+    const [applications, total] = await Promise.all([
+      query ? searchApplications(query, { teamId }) : listAllApplications({ teamId, since }),
+      // The real running total — the list itself only covers the chosen window.
+      db.resume.count({ where: teamId ? { teamId } : {} }),
+    ]);
     const shown = query
       ? `${applications.length === 50 ? "the first 50" : applications.length} match${applications.length === 1 ? "" : "es"} for “${query}” across all time`
       : `${applications.length} application${applications.length === 1 ? "" : "s"} from ${range.label.toLowerCase()}`;
@@ -36,7 +41,7 @@ export default async function ResumesPage({ searchParams }: { searchParams: Prom
         <div className="flex flex-col gap-6">
           <PageHeader
             title="Applications"
-            description={`Every user's tracked applications — showing ${shown}. Sort or filter any column from its header.`}
+            description={`${total.toLocaleString()} applications in total. Showing ${shown}. Sort or filter any column from its header.`}
           />
           <ApplicationSearchBox action="/resumes" query={query} />
           {!query && <ListRangeTabs current={range.value} />}
@@ -63,14 +68,19 @@ export default async function ResumesPage({ searchParams }: { searchParams: Prom
   // column set — role track, source, days open, follow-up, and updated-at
   // are superadmin-only, as is changing status/source/approval.
   const { range, since } = resolveListRange(rangeParam, "30");
-  const resumes = await listResumes(user.id, { since });
+  const [resumes, total] = await Promise.all([
+    listResumes(user.id, { since }),
+    // The real running total. The list (and its count) covers only the chosen
+    // window, so on its own that number drops as older applications age out.
+    db.resume.count({ where: { userId: user.id } }),
+  ]);
 
   return (
     <AppShell userEmail={user.email} isSuperAdmin={false}>
       <div className="flex flex-col gap-6">
         <PageHeader
           title="Applications"
-          description={`Automatically tracked from the Resume Builder — showing ${resumes.length} application${resumes.length === 1 ? "" : "s"} from ${range.label.toLowerCase()}. Sort or filter any column from its header.`}
+          description={`You've logged ${total.toLocaleString()} application${total === 1 ? "" : "s"} in total. Showing the ${resumes.length.toLocaleString()} from ${range.label.toLowerCase()} — pick a longer range to see older ones.`}
         />
         <ListRangeTabs current={range.value} />
 
