@@ -42,7 +42,9 @@ const nextConfig: NextConfig = {
   // Base-resume import parses uploaded PDF/DOCX files server-side. Both parsers
   // load their own internals at runtime (unpdf lazy-loads its bundled pdf.js),
   // so they are required from node_modules rather than bundled.
-  serverExternalPackages: ["unpdf", "mammoth"],
+  // imapflow / mailparser / nodemailer (Inbox) open sockets and load optional
+  // modules at runtime — also kept out of the bundle.
+  serverExternalPackages: ["unpdf", "mammoth", "imapflow", "mailparser", "nodemailer"],
   experimental: {
     serverActions: {
       // Proof-of-application screenshots are uploaded through a server action

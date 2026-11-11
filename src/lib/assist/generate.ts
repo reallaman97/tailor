@@ -83,15 +83,22 @@ const ATTEMPTS = 3;
  * of the plain reply. A stalled attempt is abandoned after ATTEMPT_TIMEOUT_MS
  * and retried, but never past OVERALL_DEADLINE_MS in total.
  */
-async function callJson<T>(system: string, user: string, schema: z.ZodType<T>): Promise<{ data: T; usage: AssistUsage }> {
+export async function callJson<T>(
+  system: string,
+  user: string,
+  schema: z.ZodType<T>,
+  /** Reasoning off: quick extraction (e.g. classifying an email) rather than writing. */
+  options: { thinking?: boolean } = {}
+): Promise<{ data: T; usage: AssistUsage }> {
   // Retries are handled here, against the deadline — not by the SDK.
   const client = createDeepSeekClient(ATTEMPT_TIMEOUT_MS, 0);
   const deadline = Date.now() + OVERALL_DEADLINE_MS;
   const base = {
     model: ASSIST_MODEL,
     max_tokens: ASSIST_MAX_TOKENS,
-    thinking: { type: "enabled" },
-    reasoning_effort: ASSIST_REASONING_EFFORT,
+    ...(options.thinking === false
+      ? { thinking: { type: "disabled" } }
+      : { thinking: { type: "enabled" }, reasoning_effort: ASSIST_REASONING_EFFORT }),
     messages: [
       { role: "system", content: system },
       { role: "user", content: user },

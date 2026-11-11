@@ -23,7 +23,12 @@ export const PROOF_MAX_AGE_DAYS = 60;
  */
 export const CONTENT_RETENTION_DAYS = 90;
 
-export type RetentionResult = { proofsCleared: number; contentCleared: number };
+/** Inbox mail: routine mail (confirmations, alerts) is kept this long… */
+export const ROUTINE_MAIL_DAYS = 30;
+/** …and everything else this long (its tracker notes stay with the application). */
+export const MAIL_DAYS = 180;
+
+export type RetentionResult = { proofsCleared: number; contentCleared: number; mailDeleted: number };
 
 export async function applyRetention(now: Date = new Date()): Promise<RetentionResult> {
   const proofCutoff = new Date(now.getTime() - PROOF_RETENTION_DAYS * 24 * 60 * 60 * 1000);
@@ -54,5 +59,14 @@ export async function applyRetention(now: Date = new Date()): Promise<RetentionR
     return ids.length;
   });
 
-  return { proofsCleared, contentCleared };
+  const mail = await db.inboundEmail.deleteMany({
+    where: {
+      OR: [
+        { category: { in: ["OTHER", "APPLICATION_RECEIVED"] }, receivedAt: { lt: new Date(now.getTime() - ROUTINE_MAIL_DAYS * 86_400_000) } },
+        { receivedAt: { lt: new Date(now.getTime() - MAIL_DAYS * 86_400_000) } },
+      ],
+    },
+  });
+
+  return { proofsCleared, contentCleared, mailDeleted: mail.count };
 }

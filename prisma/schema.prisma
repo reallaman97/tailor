@@ -149,6 +149,9 @@ model Profile {
   skillGroups    SkillGroup[]
   resumes        Resume[]
   interviews     Interview[]
+  // Gmail inbox watched for application updates (src/lib/inbox).
+  mailbox        MailboxConnection?
+  inboundEmails  InboundEmail[]
 
   // Multi-tenancy (Phase 1, additive; backfilled, required after Phase 2).
   teamId String?
@@ -344,6 +347,10 @@ model Resume {
   answers                ApplicationAnswer[]
   // Interview tracker: the admin's running notes on how the interviews went.
   interviewNotes         ApplicationNote[]
+  // Inbox emails matched to this application, and those it was built for
+  // (a recruiter asking for an updated resume).
+  inboundEmails          InboundEmail[]      @relation("InboundEmailApplication")
+  preparedForEmails      InboundEmail[]      @relation("InboundEmailPreparedResume")
 
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -949,4 +956,95 @@ model Invoice {
   @@index([teamId])
   @@index([bidderId])
   @@index([status])
+}
+
+// ── Inbox: each profile's Gmail, read for application updates (src/lib/inbox) ──
+
+enum EmailCategory {
+  APPLICATION_RECEIVED // "thanks for applying"
+  REJECTION
+  NEXT_STEP // interview, assessment, AI interview…
+  RECRUITER_OUTREACH // a recruiter reaching out about a role
+  CONVERSATION // scheduling and other back-and-forth with a recruiter
+  RESUME_REQUEST // a recruiter asking for an (updated) resume
+  OTHER // job alerts, newsletters, anything else
+}
+
+enum WorkMode {
+  REMOTE
+  HYBRID
+  ONSITE
+  UNKNOWN
+}
+
+// The connection to one profile's Gmail: IMAP to read, SMTP to send replies,
+// both with a Google "app password" (encrypted with the profile DEK).
+model MailboxConnection {
+  id        String  @id @default(cuid())
+  profileId String  @unique
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  email          String
+  appPasswordEnc String
+  status         String    @default("active") // active | error
+  lastError      String?
+  lastCheckedAt  DateTime?
+  // IMAP position: messages with a UID above lastUid are new. uidValidity
+  // changing means the mailbox was rebuilt and UIDs restart.
+  uidValidity    String?
+  lastUid        Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InboundEmail {
+  id        String  @id @default(cuid())
+  profileId String
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  messageId   String // RFC 5322 Message-ID, for de-duplication and threading replies
+  references  String?  @db.Text // the original References header, continued in replies
+  fromAddress String
+  fromName    String?
+  replyTo     String?
+  subject     String
+  receivedAt  DateTime
+  // Plain-text body, truncated and encrypted with the profile DEK. Not kept
+  // for noise (job alerts etc.) — only for emails that matter.
+  bodyEnc     String?  @db.Text
+
+  category     EmailCategory
+  workMode     WorkMode      @default(UNKNOWN)
+  confidence   Float
+  classifiedBy String // rules | llm | manual
+  companyName  String?
+  jobTitle     String?
+  nextStepKind String? // interview | assessment | ai_interview | other
+  summaryEnc   String?       @db.Text
+
+  // The application this email is about, if found.
+  resumeId      String?
+  resume        Resume? @relation("InboundEmailApplication", fields: [resumeId], references: [id], onDelete: SetNull)
+  // What the tracker update did, e.g. "Stage → Tech 1". Null = nothing changed.
+  appliedUpdate String?
+
+  needsAttention Boolean @default(false) // shown in "Needs attention"
+  needsReview    Boolean @default(false) // unsure classification, or no application found
+  status         String  @default("open") // open | done | dismissed
+
+  suggestedReplyEnc String?   @db.Text
+  replySentAt       DateTime?
+
+  // Resume requests: the application whose tailored resume is attached as Word.
+  preparedResumeId String?
+  preparedResume   Resume? @relation("InboundEmailPreparedResume", fields: [preparedResumeId], references: [id], onDelete: SetNull)
+  prepareStatus    String? // pending | ready | failed
+  prepareError     String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([profileId, messageId])
+  @@index([profileId, receivedAt])
+  @@index([profileId, needsAttention, status])
 }

@@ -47,6 +47,10 @@ export function SidebarShell({
     if (href === "/resumes") {
       return pathname === "/resumes" || (pathname?.startsWith("/resumes/") && !pathname.startsWith("/resumes/new"));
     }
+    // The Inbox (under /interview-tracker/inbox) is its own nav item.
+    if (href === "/interview-tracker") {
+      return pathname === href || (!!pathname?.startsWith(`${href}/`) && !pathname.startsWith(`${href}/inbox`));
+    }
     // "/admin" is the panel landing; its sub-pages belong to Users/Settings/Profiles.
     if (href === "/admin") return pathname === "/admin";
     // "/interview" (Calendar) is the index: keep it lit on the calendar and on

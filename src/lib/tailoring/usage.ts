@@ -34,7 +34,7 @@ export function estimateCostMicros(
 export async function recordUsageEvent(params: {
   userId: string;
   resumeId?: string;
-  kind: "tailoring" | "resume-import" | "cover-letter" | "ask-ai";
+  kind: "tailoring" | "resume-import" | "cover-letter" | "ask-ai" | "inbox";
   model: string;
   inputTokens: number;
   /** Of `inputTokens`, how many were served from the provider's prompt cache. */
