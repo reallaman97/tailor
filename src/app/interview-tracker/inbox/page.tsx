@@ -13,7 +13,6 @@ import { MailIcon } from "@/components/icons";
 import { cn } from "@/lib/utils";
 import { CheckNowButton } from "./check-now-button";
 import { ConnectForm } from "./connect-form";
-import { AutoPrepare } from "./auto-prepare";
 import { disconnectMailboxAction } from "./actions";
 
 export const maxDuration = 60;
@@ -29,7 +28,6 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
   const profile = profiles.find((p) => p.id === params.profile) ?? profiles[0];
   const tab = (INBOX_TABS.find((t) => t.value === params.tab)?.value ?? "attention") as InboxTab;
   const data = profile?.mailbox ? await listInboxEmails(profile.id, tab) : null;
-  const pendingPrepares = data?.rows.filter((r) => r.prepareStatus === "pending").map((r) => r.id) ?? [];
   const href = (p: string, t: InboxTab = tab) => `/interview-tracker/inbox?profile=${encodeURIComponent(p)}&tab=${t}`;
 
   return (
@@ -125,8 +123,6 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                 </nav>
                 <p className="-mt-3 text-xs text-muted-foreground">{INBOX_TABS.find((t) => t.value === tab)?.hint}</p>
 
-                <AutoPrepare emailIds={pendingPrepares} />
-
                 {data.rows.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Nothing here.</p>
                 ) : (
@@ -146,7 +142,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
 }
 
 function EmailRow({ row }: { row: InboxEmailRow }) {
-  const preparing = row.prepareStatus === "pending" || row.prepareStatus?.startsWith("building:");
+  const preparing = !!row.prepareStatus?.startsWith("building:");
   return (
     <li>
       <Link href={`/interview-tracker/inbox/${row.id}`} className="flex flex-col gap-1.5 px-4 py-3 hover:bg-muted/40">

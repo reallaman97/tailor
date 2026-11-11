@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Textarea } from "@/components/ui/textarea";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -9,14 +9,14 @@ import { DownloadIcon, SparklesIcon } from "@/components/icons";
 
 /**
  * The suggested reply, editable, and Send — from the profile's own Gmail, as a
- * reply in the same thread. For resume requests the tailored Word resume is
- * prepared automatically and attached. Nothing is sent without clicking Send.
+ * reply in the same thread. Writing the suggestion and preparing the Word
+ * resume both spend tokens, so each runs only when its button is clicked —
+ * and nothing is sent without clicking Send.
  */
 export function ReplyPanel({
   emailId,
   to,
   initialReply,
-  autoSuggest,
   isResumeRequest,
   prepareStatus,
   prepareError,
@@ -26,7 +26,6 @@ export function ReplyPanel({
   emailId: string;
   to: string;
   initialReply: string | null;
-  autoSuggest: boolean;
   isResumeRequest: boolean;
   prepareStatus: string | null;
   prepareError: string | null;
@@ -41,7 +40,6 @@ export function ReplyPanel({
   const [attach, setAttach] = useState(isResumeRequest);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(sentAt);
-  const started = useRef(false);
 
   async function suggest() {
     setSuggesting(true);
@@ -73,19 +71,6 @@ export function ReplyPanel({
     }
   }
 
-  // First visit: write the suggestion, and start the resume, without being asked.
-  const startAutomatically = useEffectEvent(() => {
-    if (started.current || sent) return;
-    started.current = true;
-    if (autoSuggest && !initialReply) void suggest();
-    if (isResumeRequest && (prepareStatus === "pending" || prepareStatus === null)) void prepare();
-  });
-  useEffect(() => {
-    // After mount, not during it — the requests then update state as they finish.
-    const timer = setTimeout(startAutomatically, 0);
-    return () => clearTimeout(timer);
-  }, []);
-
   async function send() {
     setSending(true);
     setError(null);
@@ -108,7 +93,7 @@ export function ReplyPanel({
     }
   }
 
-  const building = preparing || prepareStatus === "pending" || !!prepareStatus?.startsWith("building:");
+  const building = preparing || !!prepareStatus?.startsWith("building:");
   const ready = prepareStatus === "ready";
 
   return (
@@ -129,9 +114,11 @@ export function ReplyPanel({
             </>
           ) : (
             <>
-              <span className="text-destructive">{prepareError ?? "No resume prepared yet."}</span>
+              <span className={prepareStatus === "failed" ? "text-destructive" : "text-muted-foreground"}>
+                {prepareStatus === "failed" ? (prepareError ?? "Couldn't prepare the resume.") : "No Word resume yet."}
+              </span>
               <Button size="sm" variant="outline" onClick={prepare}>
-                {prepareStatus === "failed" ? "Try again" : "Prepare resume"}
+                {prepareStatus === "failed" ? "Try again" : "Prepare Word resume"}
               </Button>
             </>
           )}
@@ -142,7 +129,7 @@ export function ReplyPanel({
         value={reply}
         onChange={(e) => setReply(e.target.value)}
         rows={10}
-        placeholder={suggesting ? "Writing a suggested reply…" : "Write your reply…"}
+        placeholder={suggesting ? "Writing a suggested reply…" : "Write your reply, or click “Suggest a reply”…"}
         aria-label="Reply"
         className="text-sm leading-relaxed"
       />

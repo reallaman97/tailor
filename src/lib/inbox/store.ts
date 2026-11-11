@@ -253,18 +253,15 @@ export async function updateInboxEmail(
   }
   if (patch.resumeId !== undefined) data.needsReview = false;
   if (patch.status && patch.status !== "open") data.needsReview = false;
-  if (patch.category === "RESUME_REQUEST") {
-    const cur = await db.inboundEmail.findUnique({ where: { id: emailId }, select: { prepareStatus: true } });
-    if (!cur?.prepareStatus) data.prepareStatus = "pending";
-    data.needsAttention = true;
-  }
+  if (patch.category === "RESUME_REQUEST") data.needsAttention = true;
   await db.inboundEmail.update({ where: { id: emailId }, data });
 }
 
 // ── Resume requests ──────────────────────────────────────────────────────────
 
 /**
- * Gets a tailored resume ready to attach for a resume request: the matched
+ * Gets a tailored resume ready to attach for a resume request — only when
+ * someone clicks "Prepare resume", since a new build spends tokens: the matched
  * application's, or — for a role not applied to yet — a new application built
  * from the email (it's the job description the recruiter sent), tailored with
  * the usual resume prompt. Takes as long as a normal build (1–2 minutes).
@@ -312,7 +309,7 @@ export async function prepareResumeForEmail(viewer: Viewer, emailId: string): Pr
       id: emailId,
       OR: [
         { prepareStatus: null },
-        { prepareStatus: { in: ["pending", "failed"] } },
+        { prepareStatus: "failed" },
         { AND: [{ prepareStatus: { startsWith: "building:" } }, { prepareStatus: { lt: staleClaim } }] },
       ],
     },
@@ -360,6 +357,7 @@ export async function renderApplicationDocx(resumeId: string): Promise<{ filenam
 
 // ── Replies ──────────────────────────────────────────────────────────────────
 
+/** Writes a suggested reply — only on request ("Suggest a reply"), since it spends tokens. */
 export async function suggestReplyForEmail(viewer: { id: string }, emailId: string): Promise<string> {
   const e = await getInboxEmail(emailId);
   if (!e) throw new Error("This email no longer exists.");

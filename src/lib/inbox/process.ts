@@ -194,7 +194,6 @@ export async function processEmail(
         appliedUpdate,
         needsAttention,
         needsReview,
-        prepareStatus: c.category === "RESUME_REQUEST" && remoteish ? "pending" : null,
       },
     });
   } catch (err) {

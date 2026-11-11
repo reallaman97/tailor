@@ -75,8 +75,8 @@ export default async function InboxEmailPage({ params }: { params: Promise<{ ema
                 <CardHeader>
                   <CardTitle>Reply</CardTitle>
                   <CardDescription>
-                    A suggested reply — edit it, then send. It goes from {email.mailboxEmail ?? "this profile's Gmail"} as a reply in the
-                    same thread.
+                    Write it yourself or click “Suggest a reply”, edit, then send. It goes from{" "}
+                    {email.mailboxEmail ?? "this profile's Gmail"} as a reply in the same thread.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -84,7 +84,6 @@ export default async function InboxEmailPage({ params }: { params: Promise<{ ema
                     emailId={email.id}
                     to={email.replyTo ?? email.fromAddress}
                     initialReply={email.suggestedReply}
-                    autoSuggest={wantsReply}
                     isResumeRequest={isResumeRequest}
                     prepareStatus={email.prepareStatus}
                     prepareError={email.prepareError}
